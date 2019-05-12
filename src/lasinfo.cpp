@@ -233,7 +233,8 @@ int main(int argc, char *argv[])
   bool suppress_extra_bytes = false;
   bool repair_bb = false;
   bool repair_counters = false;
-  bool edit_header = false;  I32 set_file_source_ID = -1;
+  bool edit_header = false;
+  I32 set_file_source_ID = -1;
   bool set_file_source_ID_from_point_source_ID = false;
   I32 set_global_encoding = -1;
   I64 set_project_ID_GUID_data_1 = -1;
@@ -258,13 +259,16 @@ int main(int argc, char *argv[])
   F64* set_offset = 0;
   F64* set_scale = 0;
   I64 set_start_of_waveform_data_packet_record = -1;
+  I32 set_geotiff_epsg = -1;
   bool auto_date_creation = false;
   FILE* file_out = stderr;
   U32 horizontal_units = 0; 
   // extract a subsequence
-  U32 subsequence_start = 0;
-  U32 subsequence_stop = U32_MAX;
+  I64 subsequence_start = 0;
+  I64 subsequence_stop = I64_MAX;
   U32 progress = 0;
+  // rename
+  CHAR* base_name = 0;
 
   LAShistogram lashistogram;
   LASreadOpener lasreadopener;
@@ -415,7 +419,51 @@ int main(int argc, char *argv[])
         fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop\n", argv[i]);
         byebye(true);
       }
-      subsequence_start = (U32)atoi(argv[i+1]); subsequence_stop = (U32)atoi(argv[i+2]);
+#ifdef _WIN32
+      if (sscanf(argv[i+1], "%I64d", &subsequence_start) != 1)
+#else
+      if (sscanf(argv[i+1], "%lld", &subsequence_start) != 1)
+#endif
+      {
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%s' is not a valid start\n", argv[i], argv[i+1]);
+        byebye(true);
+      }
+      if (subsequence_start < 0)
+      {
+#ifdef _WIN32
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%I64d' is not a valid start\n", argv[i], subsequence_start);
+#else
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%lld' is not a valid start\n", argv[i], subsequence_start);
+#endif
+        byebye(true);
+      }
+#ifdef _WIN32
+      if (sscanf(argv[i+2], "%I64d", &subsequence_stop) != 1)
+#else
+      if (sscanf(argv[i+2], "%lld", &subsequence_stop) != 1)
+#endif
+      {
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%s' is not a valid stop\n", argv[i], argv[i+2]);
+        byebye(true);
+      }
+      if (subsequence_stop < 0)
+      {
+#ifdef _WIN32
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%I64d' is not a valid stop\n", argv[i], subsequence_stop);
+#else
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%lld' is not a valid stop\n", argv[i], subsequence_stop);
+#endif
+        byebye(true);
+      }
+      if (subsequence_start >= subsequence_stop)
+      {
+#ifdef _WIN32
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%I64d' and '%I64d' are no valid start and stop combination \n", argv[i], subsequence_start, subsequence_stop);
+#else
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: start stop but '%lld' and '%lld' are no valid start and stop combination \n", argv[i], subsequence_start, subsequence_stop);
+#endif
+        byebye(true);
+      }
       i+=2;
     }
     else if (strcmp(argv[i],"-start_at_point") == 0)
@@ -425,7 +473,24 @@ int main(int argc, char *argv[])
         fprintf(stderr,"ERROR: '%s' needs 1 argument: start\n", argv[i]);
         byebye(true);
       }
-      subsequence_start = (unsigned int)atoi(argv[i+1]);
+#ifdef _WIN32
+      if (sscanf(argv[i+1], "%I64d", &subsequence_start) != 1)
+#else
+      if (sscanf(argv[i+1], "%lld", &subsequence_start) != 1)
+#endif
+      {
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: start but '%s' is not a valid start\n", argv[i], argv[i+1]);
+        byebye(true);
+      }
+      if (subsequence_start < 0)
+      {
+#ifdef _WIN32
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: start but '%I64d' is not a valid start\n", argv[i], subsequence_start);
+#else
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: start but '%lld' is not a valid start\n", argv[i], subsequence_start);
+#endif
+        byebye(true);
+      }
       i+=1;
     }
     else if (strcmp(argv[i],"-stop_at_point") == 0)
@@ -435,284 +500,341 @@ int main(int argc, char *argv[])
         fprintf(stderr,"ERROR: '%s' needs 1 argument: stop\n", argv[i]);
         byebye(true);
       }
-      subsequence_stop = (unsigned int)atoi(argv[i+1]);
+#ifdef _WIN32
+      if (sscanf(argv[i+1], "%I64d", &subsequence_stop) != 1)
+#else
+      if (sscanf(argv[i+1], "%lld", &subsequence_stop) != 1)
+#endif
+      {
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: start but '%s' is not a valid stop\n", argv[i], argv[i+1]);
+        byebye(true);
+      }
+      if (subsequence_stop < 0)
+      {
+#ifdef _WIN32
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: start but '%I64d' is not a valid stop\n", argv[i], subsequence_stop);
+#else
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: start but '%lld' is not a valid stop\n", argv[i], subsequence_stop);
+#endif
+        byebye(true);
+      }
       i+=1;
     }
-    else if (strcmp(argv[i],"-repair") == 0)
+    else if (strncmp(argv[i],"-repair", 7) == 0)
     {
-      repair_bb = true;
-      repair_counters = true;
-    }
-    else if (strcmp(argv[i],"-repair_bb") == 0)
-    {
-      repair_bb = true;
-    }
-    else if (strcmp(argv[i],"-repair_counters") == 0)
-    {
-      repair_counters = true;
+      if (strcmp(argv[i],"-repair") == 0)
+      {
+        repair_bb = true;
+        repair_counters = true;
+      }
+      else if (strcmp(argv[i],"-repair_bb") == 0)
+      {
+        repair_bb = true;
+      }
+      else if (strcmp(argv[i],"-repair_counters") == 0)
+      {
+        repair_counters = true;
+      }
     }
     else if (strcmp(argv[i],"-auto_date") == 0 || strcmp(argv[i],"-auto_creation_date") == 0 || strcmp(argv[i],"-auto_creation") == 0)
     {
       auto_date_creation = true;
     }
-    else if (strcmp(argv[i],"-set_file_source_ID") == 0)
+    else if (strncmp(argv[i],"-set_", 5) == 0)
     {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: index\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-			set_file_source_ID = atoi(argv[i]);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_file_source_ID_from_point_source_ID") == 0)
-    {
-			set_file_source_ID_from_point_source_ID = true;
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_GUID") == 0)
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: value1\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-#ifdef _WIN32
-      if (sscanf(argv[i], "%I64x-%x-%x-%x-%I64x", &set_project_ID_GUID_data_1, &set_project_ID_GUID_data_2, &set_project_ID_GUID_data_3, &set_project_ID_GUID_data_4a, &set_project_ID_GUID_data_4b) != 5)
-#else
-      if (sscanf(argv[i], "%llx-%x-%x-%x-%llx", &set_project_ID_GUID_data_1, &set_project_ID_GUID_data_2, &set_project_ID_GUID_data_3, &set_project_ID_GUID_data_4a, &set_project_ID_GUID_data_4b) != 5)
-#endif
+      if (strcmp(argv[i],"-set_file_source_ID") == 0)
       {
         if ((i+1) >= argc)
         {
-          fprintf(stderr,"ERROR: '%s' needs hexadecimal GUID in 'F794F8A4-A23E-421E-A134-ACF7754E1C54' format\n", argv[i]);
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: index\n", argv[i]);
           byebye(true);
         }
-      }
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_system_identifier") == 0)
-    {
-      if ((i+1) >= argc)
+        if (sscanf(argv[i+1], "%u", &set_file_source_ID) != 1)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: index but '%s' is no valid index\n", argv[i], argv[i+1]);
+          byebye(true);
+        }
+        if (set_file_source_ID > U16_MAX)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: index between 0 and %u but %u is out of range\n", argv[i], U16_MAX, set_file_source_ID);
+          byebye(true);
+        }
+			  i++;
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_file_source_ID_from_point_source_ID") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: name\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-			set_system_identifier = new I8[32];
-      memset(set_system_identifier, 0, 32);
-      strncpy(set_system_identifier, argv[i], 32);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_generating_software") == 0)
-    {
-      if ((i+1) >= argc)
+			  set_file_source_ID_from_point_source_ID = true;
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_GUID") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: name\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-			set_generating_software = new I8[32];
-      memset(set_generating_software, 0, 32);
-      strncpy(set_generating_software, argv[i], 32);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_bb") == 0 || strcmp(argv[i],"-set_bounding_box") == 0)
-    {
-      if ((i+6) >= argc)
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: value1\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+#ifdef _WIN32
+        if (sscanf(argv[i], "%I64x-%x-%x-%x-%I64x", &set_project_ID_GUID_data_1, &set_project_ID_GUID_data_2, &set_project_ID_GUID_data_3, &set_project_ID_GUID_data_4a, &set_project_ID_GUID_data_4b) != 5)
+#else
+        if (sscanf(argv[i], "%llx-%x-%x-%x-%llx", &set_project_ID_GUID_data_1, &set_project_ID_GUID_data_2, &set_project_ID_GUID_data_3, &set_project_ID_GUID_data_4a, &set_project_ID_GUID_data_4b) != 5)
+#endif
+        {
+          if ((i+1) >= argc)
+          {
+            fprintf(stderr,"ERROR: '%s' needs hexadecimal GUID in 'F794F8A4-A23E-421E-A134-ACF7754E1C54' format\n", argv[i]);
+            byebye(true);
+          }
+        }
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_system_identifier") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 6 arguments: min_x min_y min_z max_x max_y max_z\n", argv[i]);
-        byebye(true);
-      }
-			set_bounding_box = new F64[6];
-			i++;
-      set_bounding_box[1] = atof(argv[i]);
-			i++;
-      set_bounding_box[3] = atof(argv[i]);
-			i++;
-      set_bounding_box[5] = atof(argv[i]);
-			i++;
-      set_bounding_box[0] = atof(argv[i]);
-			i++;
-      set_bounding_box[2] = atof(argv[i]);
-			i++;
-      set_bounding_box[4] = atof(argv[i]);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_offset") == 0)
-    {
-      if ((i+3) >= argc)
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: name\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+			  set_system_identifier = new I8[32];
+        memset(set_system_identifier, 0, 32);
+        strncpy(set_system_identifier, argv[i], 32);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_generating_software") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i]);
-        byebye(true);
-      }
-			set_offset = new F64[3];
-			i++;
-      set_offset[0] = atof(argv[i]);
-			i++;
-      set_offset[1] = atof(argv[i]);
-			i++;
-      set_offset[2] = atof(argv[i]);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_scale") == 0)
-    {
-      if ((i+3) >= argc)
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: name\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+			  set_generating_software = new I8[32];
+        memset(set_generating_software, 0, 32);
+        strncpy(set_generating_software, argv[i], 32);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_bb") == 0 || strcmp(argv[i],"-set_bounding_box") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i]);
-        byebye(true);
-      }
-			set_scale = new F64[3];
-			i++;
-      set_scale[0] = atof(argv[i]);
-			i++;
-      set_scale[1] = atof(argv[i]);
-			i++;
-      set_scale[2] = atof(argv[i]);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_global_encoding") == 0)
-    {
-      if ((i+1) >= argc)
+        if ((i+6) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 6 arguments: min_x min_y min_z max_x max_y max_z\n", argv[i]);
+          byebye(true);
+        }
+			  set_bounding_box = new F64[6];
+			  i++;
+        set_bounding_box[1] = atof(argv[i]);
+			  i++;
+        set_bounding_box[3] = atof(argv[i]);
+			  i++;
+        set_bounding_box[5] = atof(argv[i]);
+			  i++;
+        set_bounding_box[0] = atof(argv[i]);
+			  i++;
+        set_bounding_box[2] = atof(argv[i]);
+			  i++;
+        set_bounding_box[4] = atof(argv[i]);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_offset") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: number\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_global_encoding = atoi(argv[i]);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_version") == 0)
-    {
-      if ((i+1) >= argc)
+        if ((i+3) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i]);
+          byebye(true);
+        }
+			  set_offset = new F64[3];
+			  i++;
+        set_offset[0] = atof(argv[i]);
+			  i++;
+        set_offset[1] = atof(argv[i]);
+			  i++;
+        set_offset[2] = atof(argv[i]);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_scale") == 0)
       {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: major.minor\n", argv[i]);
-        byebye(true);
-      }
-      i++;
-      int major;
-      int minor;
-      if (sscanf(argv[i],"%d.%d",&major,&minor) != 2)
+        if ((i+3) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i]);
+          byebye(true);
+        }
+			  set_scale = new F64[3];
+			  i++;
+        set_scale[0] = atof(argv[i]);
+			  i++;
+        set_scale[1] = atof(argv[i]);
+			  i++;
+        set_scale[2] = atof(argv[i]);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_global_encoding") == 0)
       {
-        fprintf(stderr,"ERROR: cannot understand argument '%s' of '%s'\n", argv[i], argv[i-1]);
-        usage();
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: number\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_global_encoding = atoi(argv[i]);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_version") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: major.minor\n", argv[i]);
+          byebye(true);
+        }
+        i++;
+        int major;
+        int minor;
+        if (sscanf(argv[i],"%d.%d",&major,&minor) != 2)
+        {
+          fprintf(stderr,"ERROR: cannot understand argument '%s' of '%s'\n", argv[i], argv[i-1]);
+          usage();
+        }
+        set_version_major = (I8)major;
+        set_version_minor = (I8)minor;
+        edit_header = true;
       }
-      set_version_major = (I8)major;
-      set_version_minor = (I8)minor;
-      edit_header = true;
+      else if (strcmp(argv[i],"-set_creation_date") == 0 || strcmp(argv[i],"-set_file_creation") == 0)
+      {
+        if ((i+2) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 2 arguments: day year\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_creation_day = (U16)atoi(argv[i]);
+			  i++;
+        set_creation_year = (U16)atoi(argv[i]);
+        edit_header = true;
+		  }
+      else if (strcmp(argv[i],"-set_number_of_point_records") == 0 )
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: number\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_number_of_point_records = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_number_of_points_by_return") == 0 )
+      {
+        if ((i+5) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 5 arguments: ret1 ret2 ret3 ret4 ret5\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_number_of_points_by_return[0] = atoi(argv[i]);
+			  i++;
+        set_number_of_points_by_return[1] = atoi(argv[i]);
+			  i++;
+        set_number_of_points_by_return[2] = atoi(argv[i]);
+			  i++;
+        set_number_of_points_by_return[3] = atoi(argv[i]);
+			  i++;
+        set_number_of_points_by_return[4] = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_header_size") == 0 )
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: size\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_header_size = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_offset_to_point_data") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: offset\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_offset_to_point_data = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_number_of_variable_length_records") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: number\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_number_of_variable_length_records = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_point_data_format") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: type\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_point_data_format = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_point_data_record_length") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: size\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_point_data_record_length = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_start_of_waveform_data_packet_record") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: start\n", argv[i]);
+          byebye(true);
+        }
+			  i++;
+        set_start_of_waveform_data_packet_record = atoi(argv[i]);
+        edit_header = true;
+      }
+      else if (strcmp(argv[i],"-set_geotiff_epsg") == 0)
+      {
+        if ((i+1) >= argc)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: code\n", argv[i]);
+          byebye(true);
+        }
+        if (sscanf(argv[i+1], "%u", &set_geotiff_epsg) != 1)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: code but '%s' is no valid code\n", argv[i], argv[i+1]);
+          byebye(true);
+        }
+        if (set_geotiff_epsg > U16_MAX)
+        {
+          fprintf(stderr,"ERROR: '%s' needs 1 argument: code between 0 and %u but %u is out of range\n", argv[i], U16_MAX, set_geotiff_epsg);
+          byebye(true);
+        }
+			  i++;
+        edit_header = true;
+		  }
+      else
+      {
+        fprintf(stderr, "ERROR: cannot understand argument '%s'\n", argv[i]);
+        byebye(TRUE);
+      }
     }
-    else if (strcmp(argv[i],"-set_creation_date") == 0 || strcmp(argv[i],"-set_file_creation") == 0)
-    {
-      if ((i+2) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 2 arguments: day year\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_creation_day = (U16)atoi(argv[i]);
-			i++;
-      set_creation_year = (U16)atoi(argv[i]);
-      edit_header = true;
-		}
-    else if (strcmp(argv[i],"-set_number_of_point_records") == 0 )
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: number\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_number_of_point_records = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_number_of_points_by_return") == 0 )
-    {
-      if ((i+5) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 5 arguments: ret1 ret2 ret3 ret4 ret5\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_number_of_points_by_return[0] = atoi(argv[i]);
-			i++;
-      set_number_of_points_by_return[1] = atoi(argv[i]);
-			i++;
-      set_number_of_points_by_return[2] = atoi(argv[i]);
-			i++;
-      set_number_of_points_by_return[3] = atoi(argv[i]);
-			i++;
-      set_number_of_points_by_return[4] = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_header_size") == 0 )
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: size\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_header_size = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_offset_to_point_data") == 0)
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: offset\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_offset_to_point_data = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_number_of_variable_length_records") == 0)
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: number\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_number_of_variable_length_records = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_point_data_format") == 0)
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: type\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_point_data_format = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_point_data_record_length") == 0)
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: size\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_point_data_record_length = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if (strcmp(argv[i],"-set_start_of_waveform_data_packet_record") == 0)
-    {
-      if ((i+1) >= argc)
-      {
-        fprintf(stderr,"ERROR: '%s' needs 1 argument: start\n", argv[i]);
-        byebye(true);
-      }
-			i++;
-      set_start_of_waveform_data_packet_record = atoi(argv[i]);
-      edit_header = true;
-    }
-    else if ((strncmp(argv[i],"-suppress_", 10)  == 0))
+    else if (strncmp(argv[i],"-suppress_", 10) == 0)
     {
       if (strcmp(argv[i],"-suppress_z") == 0)
       {
@@ -756,6 +878,16 @@ int main(int argc, char *argv[])
         byebye(TRUE);
       }
     }
+    else if (strcmp(argv[i],"-rename") == 0)
+    {
+      if ((i+1) >= argc)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: base name\n", argv[i]);
+        byebye(true);
+      }
+			i++;
+      base_name = argv[i];
+    }
     else if (strcmp(argv[i],"-progress") == 0)
     {
       if ((i+1) >= argc)
@@ -763,8 +895,17 @@ int main(int argc, char *argv[])
         fprintf(stderr,"ERROR: '%s' needs 1 argument: every\n", argv[i]);
         byebye(true);
       }
+      if (sscanf(argv[i+1], "%u", &progress) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: every but '%s' is no valid number\n", argv[i], argv[i+1]);
+        byebye(true);
+      }
+      if (progress == 0)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: every but '%u' is no valid number\n", argv[i], progress);
+        byebye(true);
+      }
 			i++;
-      progress = atoi(argv[i]);
     }
     else if ((argv[i][0] != '-') && (lasreadopener.get_file_name_number() == 0))
     {
@@ -908,6 +1049,47 @@ int main(int argc, char *argv[])
         else
         {
           set_file_source_ID = -1;
+        }
+        lasreader->close();
+        delete lasreader;
+      }
+      I64 set_geotiff_vlr_geo_keys_pos = -1;
+      U32 set_geotiff_vlr_geo_keys_length = 0;
+      I64 set_geotiff_vlr_geo_double_pos = -1;
+      U32 set_geotiff_vlr_geo_double_length = 0;
+      I64 set_geotiff_vlr_geo_ascii_pos = -1;
+      U32 set_geotiff_vlr_geo_ascii_length = 0;
+      if (set_geotiff_epsg != -1)
+      {
+        LASreader* lasreader = lasreadopener.open(file_name, FALSE);
+        if (lasreader == 0)
+        {
+          fprintf(stderr, "ERROR: cannot open lasreader for '%s'\n", file_name);
+          byebye(true, argc==1);
+        }
+        I64 pos = lasreader->header.header_size;
+        for (i = 0; i < (int)lasreader->header.number_of_variable_length_records; i++)
+        {
+          pos += 54;
+          if (strcmp(lasreader->header.vlrs[i].user_id, "LASF_Projection") == 0)
+          {
+            if (lasreader->header.vlrs[i].record_id == 34735) // GeoKeyDirectoryTag
+            {
+              set_geotiff_vlr_geo_keys_pos = pos;
+              set_geotiff_vlr_geo_keys_length = lasreader->header.vlrs[i].record_length_after_header;
+            }
+            else if (lasreader->header.vlrs[i].record_id == 34736) // GeoDoubleParamsTag
+            {
+              set_geotiff_vlr_geo_double_pos = pos;
+              set_geotiff_vlr_geo_double_length = lasreader->header.vlrs[i].record_length_after_header;
+            }
+            else if (lasreader->header.vlrs[i].record_id == 34737) // GeoAsciiParamsTag
+            {
+              set_geotiff_vlr_geo_ascii_pos = pos;
+              set_geotiff_vlr_geo_ascii_length = lasreader->header.vlrs[i].record_length_after_header;
+            }
+          }
+          pos += lasreader->header.vlrs[i].record_length_after_header;
         }
         lasreader->close();
         delete lasreader;
@@ -1057,6 +1239,76 @@ int main(int argc, char *argv[])
           fseek(file, 227, SEEK_SET);
           fwrite(&set_start_of_waveform_data_packet_record, sizeof(I64), 1, file);
         }
+        if (set_geotiff_epsg != -1)
+        {
+          if (set_geotiff_vlr_geo_keys_pos != -1)
+          {
+            GeoProjectionConverter geo;
+            if (geo.set_epsg_code(set_geotiff_epsg))
+            {
+              int number_of_keys;
+              GeoProjectionGeoKeys* geo_keys = 0;
+              int num_geo_double_params;
+              double* geo_double_params = 0;
+              if (geo.get_geo_keys_from_projection(number_of_keys, &geo_keys, num_geo_double_params, &geo_double_params))
+              {
+                U32 set_geotiff_vlr_geo_keys_new_length = sizeof(GeoProjectionGeoKeys)*(number_of_keys+1);
+
+                if (set_geotiff_vlr_geo_keys_new_length <= set_geotiff_vlr_geo_keys_length)
+                {
+                  fseek(file,(long)set_geotiff_vlr_geo_keys_pos, SEEK_SET);
+                  LASvlr_geo_keys vlr_geo_key_directory;
+                  vlr_geo_key_directory.key_directory_version = 1;
+                  vlr_geo_key_directory.key_revision = 1;
+                  vlr_geo_key_directory.minor_revision = 0;
+                  vlr_geo_key_directory.number_of_keys = number_of_keys;
+                  fwrite(&vlr_geo_key_directory, sizeof(LASvlr_geo_keys), 1, file);
+                  fwrite(geo_keys, sizeof(GeoProjectionGeoKeys), number_of_keys, file);
+                  for (i = set_geotiff_vlr_geo_keys_new_length; i < (int)set_geotiff_vlr_geo_keys_length; i++)
+                  {
+                    fputc(0, file);
+                  }
+
+                  if (set_geotiff_vlr_geo_double_pos != -1)
+                  {
+                    fseek(file,(long)set_geotiff_vlr_geo_double_pos, SEEK_SET);
+                    for (i = 0; i < (int)set_geotiff_vlr_geo_double_length; i++)
+                    {
+                      fputc(0, file);
+                    }
+                  }
+
+                  if (set_geotiff_vlr_geo_ascii_pos != -1)
+                  {
+                    fseek(file,(long)set_geotiff_vlr_geo_ascii_pos, SEEK_SET);
+                    for (i = 0; i < (int)set_geotiff_vlr_geo_ascii_length; i++)
+                    {
+                      fputc(0, file);
+                    }
+                  }
+                }
+                else
+                {
+                  fprintf(stderr, "WARNING: cannot set EPSG to %u because file '%s' has not enough header space for GeoTIFF tags\n", set_geotiff_epsg, file_name);
+                }
+              }
+              else
+              {
+                fprintf(stderr, "WARNING: cannot set EPSG in GeoTIFF tags of because no GeoTIFF tags available for code %u\n", set_geotiff_epsg);
+                set_geotiff_epsg = -1;
+              }
+            }
+            else
+            {
+              fprintf(stderr, "WARNING: cannot set EPSG in GeoTIFF tags of because code %u is unknown\n", set_geotiff_epsg);
+              set_geotiff_epsg = -1;
+            }
+          }
+          else
+          {
+            fprintf(stderr, "WARNING: cannot set EPSG to %u because file '%s' has no GeoTIFF tags\n", set_geotiff_epsg, file_name);
+          }
+        }
         if (verbose) fprintf(stderr, "edited '%s' ...\n", file_name);
         fclose(file);
       }
@@ -1070,8 +1322,45 @@ int main(int argc, char *argv[])
       fprintf(stderr, "ERROR: cannot open lasreader\n");
       byebye(true, argc==1);
     }
-
     LASheader* lasheader = &lasreader->header;
+
+    if (base_name && lasreadopener.get_file_name())
+    {
+      lasreader->close();
+
+#ifdef _WIN32
+      if (verbose) fprintf(stderr, "renaming '%s' with %I64d points\n", lasreadopener.get_file_name(), lasreader->npoints);
+#else
+      fprintf(stderr, "ERROR: renaming implemented ...\n");
+      byebye(true, argc==1);
+#endif
+
+      char command[2048];
+      if (strlen(base_name))
+      {
+        sprintf(command, "rename \"%s\" \"%s_%d_%d.xxx\"", lasreadopener.get_file_name(), base_name, I32_QUANTIZE(lasheader->min_x), I32_QUANTIZE(lasheader->min_y));
+      }
+      else
+      {
+        sprintf(command, "rename \"%s\" \"%d_%d.xxx\"", lasreadopener.get_file_name(), I32_QUANTIZE(lasheader->min_x), I32_QUANTIZE(lasheader->min_y));
+      }
+      int len1 = (int)strlen(lasreadopener.get_file_name());
+      int len2 = (int)strlen(command);
+      command[len2-4] = lasreadopener.get_file_name()[len1-3];
+      command[len2-3] = lasreadopener.get_file_name()[len1-2];
+      command[len2-2] = lasreadopener.get_file_name()[len1-1];
+      delete lasreader;
+      
+      if (verbose) fprintf(stderr, "executing '%s'\n", command);
+
+      if (system(command) != 0)
+      {
+        fprintf(stderr, "ERROR: failed to execute '%s'\n", command);
+        byebye(true);
+      }
+      continue;
+    }
+
 
 #ifdef _WIN32
     if (verbose) fprintf(stderr, "%s '%s' with %I64d points\n", (repair_bb || repair_counters ? "repairing" : "reading"), (lasreadopener.get_file_name() ? lasreadopener.get_file_name() : "stdin"), lasreader->npoints);
@@ -1234,10 +1523,10 @@ int main(int argc, char *argv[])
       {
         fprintf(file_out, "variable length header record %d of %d:\012", i+1, (int)lasheader->number_of_variable_length_records);
         fprintf(file_out, "  reserved             %d\012", lasreader->header.vlrs[i].reserved);
-        fprintf(file_out, "  user ID              '%s'\012", lasreader->header.vlrs[i].user_id);
+        fprintf(file_out, "  user ID              '%.16s'\012", lasreader->header.vlrs[i].user_id);
         fprintf(file_out, "  record ID            %d\012", lasreader->header.vlrs[i].record_id);
         fprintf(file_out, "  length after header  %d\012", lasreader->header.vlrs[i].record_length_after_header);
-        fprintf(file_out, "  description          '%s'\012", lasreader->header.vlrs[i].description);
+        fprintf(file_out, "  description          '%.32s'\012", lasreader->header.vlrs[i].description);
 
         // special handling for known variable header tags
 
@@ -3413,14 +3702,14 @@ int main(int argc, char *argv[])
       {
         fprintf(file_out, "extended variable length header record %d of %d:\012", i+1, (int)lasheader->number_of_extended_variable_length_records);
         fprintf(file_out, "  reserved             %d\012", lasreader->header.evlrs[i].reserved);
-        fprintf(file_out, "  user ID              '%s'\012", lasreader->header.evlrs[i].user_id);
+        fprintf(file_out, "  user ID              '%.16s'\012", lasreader->header.evlrs[i].user_id);
         fprintf(file_out, "  record ID            %d\012", lasreader->header.evlrs[i].record_id);
 #ifdef _WIN32
         fprintf(file_out, "  length after header  %I64d\012", lasreader->header.evlrs[i].record_length_after_header);
 #else
         fprintf(file_out, "  length after header  %lld\012", lasreader->header.evlrs[i].record_length_after_header);
 #endif
-        fprintf(file_out, "  description          '%s'\012", lasreader->header.evlrs[i].description);
+        fprintf(file_out, "  description          '%.32s'\012", lasreader->header.evlrs[i].description);
         if (strcmp(lasheader->evlrs[i].user_id, "LASF_Projection") == 0)
         {
           if (lasheader->evlrs[i].record_id == 2111) // OGC MATH TRANSFORM WKT
@@ -3551,17 +3840,14 @@ int main(int argc, char *argv[])
           lashistogram.add(&lasreader->point);
         }
 
+        if (file_out && progress && (lasreader->p_count % progress) == 0)
+        {
 #ifdef _WIN32
-        if (file_out && progress && (lasreader->p_count % progress) == 0)
-        {
           fprintf(file_out, " ... processed %I64d points ...\012", lasreader->p_count);
-        }
 #else
-        if (file_out && progress && (lasreader->p_count % progress) == 0)
-        {
           fprintf(file_out, " ... processed %lld points ...\012", lasreader->p_count);
-        }
 #endif
+        }
       }
       if (file_out && !no_min_max)
       {
@@ -3623,11 +3909,23 @@ int main(int argc, char *argv[])
         }
         if (lasreader->point.extended_point_type)
         {
-          fprintf(file_out, "  extended_return_number     %6d %6d\012",lassummary.min.extended_return_number, lassummary.max.extended_return_number);
-          fprintf(file_out, "  extended_number_of_returns %6d %6d\012",lassummary.min.extended_number_of_returns, lassummary.max.extended_number_of_returns);
-          fprintf(file_out, "  extended_classification    %6d %6d\012",lassummary.min.extended_classification, lassummary.max.extended_classification);
-          fprintf(file_out, "  extended_scan_angle        %6d %6d\012",lassummary.min.extended_scan_angle, lassummary.max.extended_scan_angle);
-          fprintf(file_out, "  extended_scanner_channel   %6d %6d\012",lassummary.min.extended_scanner_channel, lassummary.max.extended_scanner_channel);
+          fprintf(file_out, "  extended_return_number     %6d %6d\012", lassummary.min.extended_return_number, lassummary.max.extended_return_number);
+          fprintf(file_out, "  extended_number_of_returns %6d %6d\012", lassummary.min.extended_number_of_returns, lassummary.max.extended_number_of_returns);
+          fprintf(file_out, "  extended_classification    %6d %6d\012", lassummary.min.extended_classification, lassummary.max.extended_classification);
+          fprintf(file_out, "  extended_scan_angle        %6d %6d\012", lassummary.min.extended_scan_angle, lassummary.max.extended_scan_angle);
+          fprintf(file_out, "  extended_scanner_channel   %6d %6d\012", lassummary.min.extended_scanner_channel, lassummary.max.extended_scanner_channel);
+        }
+        if (lasreader->point.extra_bytes_number && lasreader->point.attributer)
+        {
+          lassummary.min.attributer = lasreader->point.attributer;
+          lassummary.max.attributer = lasreader->point.attributer;
+          I32 a;
+          for (a = 0; a < lasreader->point.attributer->number_attributes; a++)
+          {
+            fprintf(file_out, "  attribute%d %10g %10g  ('%s')\012", a, lassummary.min.get_attribute_as_float(a), lassummary.max.get_attribute_as_float(a), lasreader->point.attributer->get_attribute_name(a));
+          }
+          lassummary.min.attributer = 0;
+          lassummary.max.attributer = 0;
         }
         if (((number_of_point_records == 0) && (lasheader->number_of_point_records > 0)) || ((number_of_points_by_return0 == 0) && (lasheader->number_of_points_by_return[0] > 0)))
         {
@@ -3892,7 +4190,7 @@ int main(int argc, char *argv[])
       U32 number_of_points_by_return[5];
       for (i = 1; i < 6; i++)
       {
-        if ((lasheader->point_data_format < 6) && (lasheader->number_of_points_by_return[i-1] != lassummary.number_of_points_by_return[i]))
+        if ((lasheader->point_data_format < 6) && ((I64)(lasheader->number_of_points_by_return[i-1]) != lassummary.number_of_points_by_return[i]))
         {
           if (lassummary.number_of_points_by_return[i] <= U32_MAX)
           {
@@ -3947,6 +4245,10 @@ int main(int argc, char *argv[])
           {
             fprintf(file_out, "WARNING: point type is %d but (legacy) number of points by return [%d] in header is %u instead zero.%s\n", lasheader->point_data_format, i, lasheader->number_of_points_by_return[i-1], (repair_counters ? "it was repaired." : ""));
           }
+        }
+        else
+        {
+          number_of_points_by_return[i-1] = (U32)lassummary.number_of_points_by_return[i];
         }
       }
 

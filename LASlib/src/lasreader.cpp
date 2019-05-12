@@ -83,6 +83,7 @@ LASreader::LASreader()
 LASreader::~LASreader()
 {
   if (index) delete index;
+  if (transform) transform->check_for_overflow();
 }
 
 void LASreader::set_index(LASindex* index)
@@ -2134,6 +2135,28 @@ const CHAR* LASreadOpener::get_file_name_only() const
 const CHAR* LASreadOpener::get_file_name(U32 number) const
 {
   return file_names[number];
+}
+
+const CHAR* LASreadOpener::get_file_name_only(U32 number) const
+{
+  const CHAR* file_name_only = 0;
+  const CHAR* file_name_curr = get_file_name(number);
+
+  if (file_name_curr)
+  {
+    I32 len = (I32)strlen(file_name_curr);
+    while ((len > 0) && (file_name_curr[len] != '\\') && (file_name_curr[len] != '/') && (file_name_curr[len] != ':')) len--;
+    if (len)
+    {
+      file_name_only = file_name_curr + len + 1;
+    }
+    else
+    {
+      file_name_only = file_name_curr;
+    }
+  }
+
+  return file_name_only;
 }
 
 I32 LASreadOpener::get_file_format(U32 number) const

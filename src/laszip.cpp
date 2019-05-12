@@ -72,15 +72,27 @@ typedef map<U64, OffsetSize> my_offset_size_map;
 void usage(bool error=false, bool wait=false)
 {
   fprintf(stderr,"usage:\n");
-  fprintf(stderr,"laszip *.las\n");
-  fprintf(stderr,"laszip *.laz\n");
-  fprintf(stderr,"laszip *.txt -iparse xyztiarn\n");
-  fprintf(stderr,"laszip lidar.las\n");
-  fprintf(stderr,"laszip lidar.laz -v\n");
+  fprintf(stderr,"laszip -i lidar.las\n");
+  fprintf(stderr,"laszip -i lidar.laz\n");
+  fprintf(stderr,"laszip -i lidar.las -nil\n");
+  fprintf(stderr,"laszip -i lidar.laz -size\n");
+  fprintf(stderr,"laszip -i lidar.laz -check\n");
+  fprintf(stderr,"laszip -i *.las\n");
+  fprintf(stderr,"laszip -i *.laz\n");
+  fprintf(stderr,"laszip -i *.las -odir compressed\n");
+  fprintf(stderr,"laszip -i *.laz -odir uncompressed\n");
+#ifdef COMPILE_WITH_MULTI_CORE
+  fprintf(stderr,"laszip -i *.las -odir compressed -cores 4\n");
+  fprintf(stderr,"laszip -i *.laz -odir uncompressed -cores 4\n");
+#endif
   fprintf(stderr,"laszip -i lidar.las -o lidar_zipped.laz\n");
   fprintf(stderr,"laszip -i lidar.laz -o lidar_unzipped.las\n");
   fprintf(stderr,"laszip -i lidar.las -stdout -olaz > lidar.laz\n");
   fprintf(stderr,"laszip -stdin -o lidar.laz < lidar.las\n");
+  fprintf(stderr,"laszip -i *.txt -iparse xyztiarn\n");
+  fprintf(stderr,"laszip -i las14.las -compatible -o las14compatible.laz\n");
+  fprintf(stderr,"laszip -i las14.laz -compatible -o las14compatible.laz\n");
+  fprintf(stderr,"laszip -i las14compatible.laz -remain_compatible -o las14compatible.las\n");
   fprintf(stderr,"laszip -h\n");
   if (wait)
   {
@@ -427,6 +439,30 @@ int main(int argc, char *argv[])
       usage(true, argc==1);
     }
 
+    // check correctness of file extension
+
+    if (lasreadopener.get_file_name())
+    {
+      const CHAR* file_name = lasreadopener.get_file_name();
+      I32 len = (I32)strlen(file_name);
+      while ((len >= 0) && (file_name[len] != '.')) len--;
+
+      if (lasreader->get_format() == LAS_TOOLS_FORMAT_LAZ)
+      {
+        if ((strncmp(file_name + len, ".laz", 4) != 0) && (strncmp(file_name + len, ".LAZ", 4) != 0))
+        {
+          fprintf(stderr, "WARNING: input LAZ file has wrong extension: '%s'\n", file_name);
+        }
+      }
+      else
+      {
+        if ((strncmp(file_name + len, ".las", 4) != 0) && (strncmp(file_name + len, ".LAS", 4) != 0))
+        {
+          fprintf(stderr, "WARNING: input LAS file has wrong extension: '%s'\n", file_name);
+        }
+      }
+    }
+
     // switch
 
     if (report_file_size)
@@ -490,6 +526,14 @@ int main(int argc, char *argv[])
         laswriteopener.make_file_name(lasreadopener.get_file_name(), -2);
       }
 
+      // make sure input and output filenames are not identical
+
+      if (lasreadopener.get_file_name() && laswriteopener.get_file_name() && (strcmp(lasreadopener.get_file_name(), laswriteopener.get_file_name()) == 0))
+      {
+        fprintf(stderr, "ERROR: input and output file name are identical: '%s'\n", lasreadopener.get_file_name());
+        usage(true);
+      }
+
       // maybe set projection
 
       if (projection_was_set)
@@ -518,7 +562,7 @@ int main(int argc, char *argv[])
         {
           // switch compression on/off
           U8 compression_type = (laswriteopener.get_format() == LAS_TOOLS_FORMAT_LAZ ? 1 : 0);
-          for (i = 0; i < 255; i++) if (lasreader->header.vlr_wave_packet_descr[i]) lasreader->header.vlr_wave_packet_descr[i]->setCompressionType(compression_type);
+          for (i = 1; i < 256; i++) if (lasreader->header.vlr_wave_packet_descr[i]) lasreader->header.vlr_wave_packet_descr[i]->setCompressionType(compression_type);
           // create laswaveform13writer
           laswaveform13writer = laswriteopener.open_waveform13(&lasreader->header);
           if (laswaveform13writer == 0)
@@ -528,7 +572,7 @@ int main(int argc, char *argv[])
             waveform = 0;
             // switch compression on/off back
             U8 compression_type = (laswriteopener.get_format() == LAS_TOOLS_FORMAT_LAZ ? 0 : 1);
-            for (i = 0; i < 255; i++) if (lasreader->header.vlr_wave_packet_descr[i]) lasreader->header.vlr_wave_packet_descr[i]->setCompressionType(compression_type);
+            for (i = 1; i < 256; i++) if (lasreader->header.vlr_wave_packet_descr[i]) lasreader->header.vlr_wave_packet_descr[i]->setCompressionType(compression_type);
           }
         }
         else
@@ -541,14 +585,14 @@ int main(int argc, char *argv[])
 
       if ((lasreader->header.version_major == 1) && (lasreader->header.version_minor >= 3))
       {
-        if (lasreader->header.global_encoding & 2) // if bit # 1 is set we have internal waveform data
+        if (lasreader->header.global_encoding & 0x0002) // if bit # 1 is set we have internal waveform data
         {
-          lasreader->header.global_encoding &= ~((U16)2); // remove internal bit
+          lasreader->header.global_encoding &= ~((U16)0x0002); // remove internal bit
           if (lasreader->header.start_of_waveform_data_packet_record) // offset to
           {
             start_of_waveform_data_packet_record = lasreader->header.start_of_waveform_data_packet_record;
             lasreader->header.start_of_waveform_data_packet_record = 0;
-            lasreader->header.global_encoding |= ((U16)4); // set external bit
+            lasreader->header.global_encoding |= ((U16)0x0004); // set external bit
           }
         }
       }
@@ -601,7 +645,7 @@ int main(int argc, char *argv[])
       if (waveform)
       {
         U8 compression_type = (laswaveform13reader->is_compressed() ? 1 : 0);
-        for (i = 0; i < 255; i++) if (lasreader->header.vlr_wave_packet_descr[i]) lasreader->header.vlr_wave_packet_descr[i]->setCompressionType(compression_type);
+        for (i = 1; i < 256; i++) if (lasreader->header.vlr_wave_packet_descr[i]) lasreader->header.vlr_wave_packet_descr[i]->setCompressionType(compression_type);
 
         U64 last_offset = 0;
         U32 last_size = 60;

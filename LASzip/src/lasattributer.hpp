@@ -145,6 +145,9 @@ public:
   inline BOOL set_scale(F64 scale) { if (data_type) { this->scale[0] = scale; options |= 0x08; return TRUE; } return FALSE; };
   inline BOOL set_offset(F64 offset) { if (data_type) { this->offset[0] = offset; options |= 0x10; return TRUE; } return FALSE; };
 
+  inline BOOL unset_scale() { if (data_type) { options &= (~0x08); return TRUE; } return FALSE; };
+  inline BOOL unset_offset() { if (data_type) { options &= (~0x10); return TRUE; } return FALSE; };
+
   inline BOOL has_no_data() const { return options & 0x01; };
   inline BOOL has_min() const { return options & 0x02; };
   inline BOOL has_max() const { return options & 0x04; };
@@ -156,8 +159,9 @@ public:
     if (data_type)
     {
       const U32 size_table[10] = { 1, 1, 2, 2, 4, 4, 8, 8, 4, 8 };
-      U32 type = get_type();
-      return size_table[type];
+      I32 type = get_type();
+      I32 dim = get_dim();
+      return size_table[type] * dim;
     }
     else
     {
@@ -189,12 +193,55 @@ public:
       cast_value = (F64)*((F32*)pointer);
     else
       cast_value = *((F64*)pointer);
-    return offset[0]+scale[0]*cast_value;
+    if (options & 0x08)
+    {
+      if (options & 0x10)
+      {
+        return offset[0]+scale[0]*cast_value;
+      }
+      else
+      {
+        return scale[0]*cast_value;
+      }
+    }
+    else
+    {
+      if (options & 0x10)
+      {
+        return offset[0]+cast_value;
+      }
+      else
+      {
+        return cast_value;
+      }
+    }
   };
 
   inline void set_value_as_float(U8* pointer, F64 value) const
   {
-    F64 unoffset_and_unscaled_value = (value - offset[0])/scale[0];
+    F64 unoffset_and_unscaled_value;
+    if (options & 0x08)
+    {
+      if (options & 0x10)
+      {
+        unoffset_and_unscaled_value = (value - offset[0])/scale[0];
+      }
+      else
+      {
+        unoffset_and_unscaled_value = value/scale[0];
+      }
+    }
+    else
+    {
+      if (options & 0x10)
+      {
+        unoffset_and_unscaled_value = value - offset[0];
+      }
+      else
+      {
+        unoffset_and_unscaled_value = value;
+      }
+    }
     I32 type = get_type();
     if (type == 0)
       *((U8*)pointer) = U8_QUANTIZE(unoffset_and_unscaled_value);
@@ -223,9 +270,9 @@ private:
   {
     return ((I32)data_type - 1)%10;
   };
-  inline I32 get_dim() const
+  inline I32 get_dim() const // compute dimension of deprecated tuple and triple attributes 
   {
-    return 1;
+    return ((I32)data_type - 1)/10 + 1;
   };
   inline U64I64F64 cast(U8* pointer) const
   {
@@ -455,6 +502,15 @@ public:
       return attribute_sizes[index];
     }
     return -1;
+  }
+
+  const CHAR* get_attribute_name(I32 index) const
+  {
+    if (index < number_attributes)
+    {
+      return attributes[index].name;
+    }
+    return 0;
   }
 
   BOOL remove_attribute(I32 index)

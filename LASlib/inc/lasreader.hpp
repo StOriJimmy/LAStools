@@ -111,9 +111,9 @@ public:
   inline F64 get_y(const I32 y) const { return header.get_y(y); };
   inline F64 get_z(const I32 z) const { return header.get_z(z); };
 
-  inline I32 get_X(const F64 x) const { return header.get_X(x); };
-  inline I32 get_Y(const F64 y) const { return header.get_Y(y); };
-  inline I32 get_Z(const F64 z) const { return header.get_Z(z); };
+  inline I64 get_X(const F64 x) const { return header.get_X(x); };
+  inline I64 get_Y(const F64 y) const { return header.get_Y(y); };
+  inline I64 get_Z(const F64 z) const { return header.get_Z(z); };
 
   virtual ByteStreamIn* get_stream() const = 0;
   virtual void close(BOOL close_stream=TRUE) = 0;
@@ -163,6 +163,7 @@ public:
   const CHAR* get_file_name() const;
   const CHAR* get_file_name_only() const;
   const CHAR* get_file_name(U32 number) const;
+  const CHAR* get_file_name_only(U32 number) const;
   void set_file_name(const CHAR* file_name, BOOL unique=FALSE);
   BOOL add_file_name(const CHAR* file_name, BOOL unique=FALSE);
   BOOL add_list_of_files(const CHAR* list_of_files, BOOL unique=FALSE);
