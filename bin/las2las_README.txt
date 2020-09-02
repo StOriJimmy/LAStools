@@ -198,32 +198,40 @@ other commandline arguments are
 -start_at_point 100            : skips all points until point number 100
 -start_at_point 900            : omits all points after point number 900
 -subseq 20 100                 : extract a subsequence of 100 points starting from point 20
--point_type 0                  : force point type to be 0
--point_size 26                 : force point size to be 26
+-set_point_type 0              : force point type to be 0
+-set_point_size 26             : force point size to be 26
+-set_global_encoding_gps_bit 1 : sets bit in global encoding field specifying Adjusted GPS Standard time stamps
+-set_version 1.2               : set LAS version number to 1.2
+-set_version_major 1           : set LAS major version number to 1
+-set_version_minor 2           : set LAS minor version number to 2
+-set_lastiling_buffer_flag 0   : sets buffer flag in LAStiling VLR (if it exists) to zero
+-set_attribute_scale 0 0.1     : sets the scale of the *first* attribute in the extra bytes to 0.1 
+-set_attribute_offset 1 10.0   : sets the offset of the *second* attribute in the extra bytes to 10.0 
 -set_classification 0          : sets all classifications fields to zero
 -set_user_data 0               : sets all user_data fields to zero
+-set_ogc_wkt                   : translate GeoTIFF keys into CRS string in OGC WKT format and add it as VLR
+-set_ogc_wkt_in_evlr           : same as above but adds it as LAS 1.4 EVLR instead. really not recommended!!!
+-remove_padding                : remove user-defined bytes before and after the header
 -remove_all_vlrs               : remove all VLRs
--remove_vlr 2                  : remove VLR number 2 (couting starts at 0)
+-remove_vlr 2                  : remove third VLR with index 2 (counting starts at 0)
 -remove_vlrs_from_to 0 2       : remove the first three VLRs
 -remove_all_evlrs              : remove all EVLRs
--remove_evlr 2                 : remove EVLR number 2 (couting starts at 0)
+-remove_evlr 2                 : remove third EVLR with index 2 (counting starts at 0)
 -remove_evlrs_from_to 0 2      : remove the first three EVLRs
+-remove_tiling_vlr             : removes VLR containing tiling information created by lastile
+-remove_original_vlr           : removes VLR containing original header information created by on-the-fly buffering
+-add_attribute 0 "hello" "sample attribute" 1.0 0.0 : adds a new attribute of type 0 (unsigned byte) as "extra bytes"
+-unset_attribute_scale 0       : unsets the scale of the *first* attribute in the extra bytes
+-unset_attribute_offset 1      : unsets the offset of the *second* attribute in the extra bytes
 -move_evlrs_to_vlrs            : move all EVLRs with small enough payload to VLR section
 -save_vlrs                     : saves all VLRs to a file called vlrs.vlr so they can be loaded into another file
 -load_vlrs                     : loads all VLRs from a file called vlrs.vlr and adds them to each processed file
--remove_padding                : remove user-defined bytes before and after the header
+-dont_remove_empty_files       : does not remove files that have zero points remaining from disk
+-clip_to_bounding_box          : kicks out all points not inside the bounding box specified by the LAS header
 -week_to_adjusted              : converts time stamps from GPS week to Adjusted Standard GPS 
 -adjusted_to_week              : converts time stamps from Adjusted Standard GPS to GPS week
 -scale_rgb_up                  : multiplies all RGB values by 256 (to go from 8 bit to 16 bit numbers)
 -scale_rgb_down                : divides all RGB values by 256 (to go from 16 bit to 8 bit numbers)
--set_version 1.2               : set LAS version number to 1.2
--set_global_encoding_gps_bit 1 : sets bit in global encoding field specifying Adjusted GPS Standard time stamps
--set_attribute_scale 0 0.1     : sets the scale of the *first* attribute in the extra bytes to 0.1 
--set_attribute_offset 1 10.0   : sets the offset of the *second* attribute in the extra bytes to 10.0 
--unset_attribute_scale 0       : unsets the scale of the *first* attribute in the extra bytes
--unset_attribute_offset 1      : unsets the offset of the *second* attribute in the extra bytes
--set_lastiling_buffer_flag 0   : sets buffer flag in LAStiling VLR (if it exists) to zero
--dont_remove_empty_files       : does not remove files that have zero points remaining from disk
 -wgs84                         : use datum WGS-84
 -grs80                         : use datum GRS1980
 -wgs72                         : use datum WGS-72
@@ -234,6 +242,7 @@ other commandline arguments are
 -nad27                         : use datum NAD27
 -etrs89                        : use datum ETRS89
 -gda94                         : use datum GDA94
+-gda2020                       : use datum GDA2020
 -osgb1936                      : use datum OSGB 1936
 -utm 12T                       : input is UTM zone 12T 
 -epsg 2972                     : input is EPSG code 2972 (e.g. Reseau Geodesique Francais Guyane 1995)
@@ -263,7 +272,6 @@ other commandline arguments are
 -target_elevation_meter          : output uses meter for elevation
 -target_precision 0.001          : output uses one millimeter resolution for x and y
 -target_elevation_precision 0.02 : output uses two centimeter resolution for z
-
 -tm 609601.22 0.0 meter 33.75 -79 0.99996                 : specifies a transverse mercator projection
 -tm 1804461.942257 0.0 feet 0.8203047 -2.1089395 0.99996
 -lcc 609601.22 0.0 meter 33.75 -79 34.33333 36.16666      : specifies a lambertian conic confomal projection
@@ -385,11 +393,15 @@ Transform coordinates.
   -translate_then_scale_y -0.5 1.001
   -transform_helmert -199.87,74.79,246.62
   -transform_helmert 598.1,73.7,418.2,0.202,0.045,-2.455,6.7
+  -transform_affine 0.9999652,0.903571,171.67,736.26
   -switch_x_y -switch_x_z -switch_y_z
   -clamp_z_below 70.5
   -clamp_z 70.5 72.5
   -copy_attribute_into_z 0
+  -add_attribute_to_z 1
+  -add_scaled_attribute_to_z 1 -1.2
   -copy_intensity_into_z
+  -copy_user_data_into_z
 Transform raw xyz integers.
   -translate_raw_z 20
   -translate_raw_xyz 1 1 0
@@ -407,6 +419,7 @@ Transform intensity.
   -copy_attribute_into_intensity 0
   -bin_gps_time_into_intensity 0.5
 Transform scan_angle.
+  -set_scan_angle 0.0
   -scale_scan_angle 1.944445
   -translate_scan_angle -5
   -translate_then_scale_scan_angle -0.5 2.1
@@ -415,9 +428,11 @@ Change the return number or return count of points.
   -set_return_number 1
   -set_extended_return_number 10
   -change_return_number_from_to 2 1
+  -change_extended_return_number_from_to 2 8
   -set_number_of_returns 2
-  -set_number_of_returns 15
+  -set_extended_number_of_returns 15
   -change_number_of_returns_from_to 0 2
+  -change_extended_number_of_returns_from_to 8 10
 Modify the classification.
   -set_classification 2
   -set_extended_classification 41
@@ -447,6 +462,7 @@ Modify the user data.
   -change_user_data_from_to 23 26
   -change_user_data_from_to 23 26
   -copy_attribute_into_user_data 1
+  -add_scaled_attribute_to_user_data 0 10.0
 Modify the point source ID.
   -set_point_source 500
   -change_point_source_from_to 1023 1024
@@ -456,6 +472,7 @@ Modify the point source ID.
   -split_scanner_channel_from_point_source
   -bin_Z_into_point_source 200
   -bin_abs_scan_angle_into_point_source 2
+  -bin_gps_time_into_point_source 5.0
 Transform gps_time.
   -set_gps_time 113556962.005715
   -translate_gps_time 40.50
@@ -472,6 +489,12 @@ Transform RGB/NIR colors.
   -copy_G_into_NIR -copy_G_into_intensity
   -copy_B_into_NIR -copy_B_into_intensity
   -copy_intensity_into_NIR
+  -switch_RGBI_into_CIR
+  -switch_RGB_intensity_into_CIR
+Transform attributes in "Extra Bytes".
+  -scale_attribute 0 1.5
+  -translate_attribute 1 0.2
+  -copy_user_data_into_attribute 0
 Supported LAS Inputs
   -i lidar.las
   -i lidar.laz
@@ -505,14 +528,14 @@ Supported LAS Outputs
   -olas -olaz -otxt -obin -oqfit (specify format)
   -stdout (pipe to stdout)
   -nil    (pipe to NULL)
-LAStools (by martin@rapidlasso.com) version 181109
+LAStools (by martin@rapidlasso.com) version 190711
 usage:
 las2las -i *.las -utm 13N
 las2las -i *.laz -first_only -olaz
 las2las -i *.las -drop_return 4 5 -olaz
 las2las -latlong -target_utm 12T -i in.las -o out.las
 las2las -i in.laz -target_epsg 2972 -o out.laz
-las2las -point_type 0 -lof file_list.txt -merged -o out.las
+las2las -set_point_type 0 -lof file_list.txt -merged -o out.las
 las2las -remove_vlr 2 -scale_rgb_up -i in.las -o out.las
 las2las -i in.las -keep_xy 630000 4834500 630500 4835000 -keep_z 10 100 -o out.las
 las2las -i in.txt -iparse xyzit -keep_circle 630200 4834750 100 -oparse xyzit -o out.txt

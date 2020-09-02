@@ -22,7 +22,7 @@
   
   COPYRIGHT:
   
-    (c) 2007-2017, martin isenburg, rapidlasso - fast tools to catch reality
+    (c) 2007-2019, martin isenburg, rapidlasso - fast tools to catch reality
 
     This is free software; you can redistribute and/or modify it under the
     terms of the GNU Lesser General Licence as published by the Free Software
@@ -33,13 +33,14 @@
   
   CHANGE HISTORY:
   
+     9 September 2019 -- warn if modifying x or y coordinates for tiles with VLR
     30 November 2017 -- set OGC WKT with '-set_ogc_wkt "PROJCS[\"WGS84\",GEOGCS[\"GCS_ ..."
     10 October 2017 -- allow piped input *and* output if no filter or coordinate change 
     14 July 2017 -- fixed missing 'comma' in compound (COMPD_CS) OGC WKT string
     23 October 2016 -- OGC WKT string stores COMPD_CS for projection + vertical
     22 October 2016 -- new '-set_ogc_wkt_in_evlr' store to EVLR instead of VLR
      1 January 2016 -- option '-set_ogc_wkt' to store CRS as OGC WKT string
-     3 May 2015 -- improved up-conversion via '-set_version 1.4 -point_type 6'
+     3 May 2015 -- improved up-conversion via '-set_version 1.4 -set_point_type 6'
      5 July 2012 -- added option to '-remove_original_vlr' 
      6 May 2012 -- added option to '-remove_tiling_vlr' 
      5 January 2012 -- added option to clip points to the bounding box
@@ -79,7 +80,7 @@ static void usage(bool error=false, bool wait=false)
   fprintf(stderr,"las2las -i *.las -drop_return 4 5 -olaz\n");
   fprintf(stderr,"las2las -latlong -target_utm 12T -i in.las -o out.las\n");
   fprintf(stderr,"las2las -i in.laz -target_epsg 2972 -o out.laz\n");
-  fprintf(stderr,"las2las -point_type 0 -lof file_list.txt -merged -o out.las\n");
+  fprintf(stderr,"las2las -set_point_type 0 -lof file_list.txt -merged -o out.las\n");
   fprintf(stderr,"las2las -remove_vlr 2 -scale_rgb_up -i in.las -o out.las\n");
   fprintf(stderr,"las2las -i in.las -keep_xy 630000 4834500 630500 4835000 -keep_z 10 100 -o out.las\n");
   fprintf(stderr,"las2las -i in.txt -iparse xyzit -keep_circle 630200 4834750 100 -oparse xyzit -o out.txt\n");
@@ -398,6 +399,9 @@ int main(int argc, char *argv[])
     {
       fprintf(stderr, "LAStools (by martin@rapidlasso.com) version %d\n", LAS_TOOLS_VERSION);
       byebye();
+    }
+    else if (strcmp(argv[i],"-fail") == 0)
+    {
     }
     else if (strcmp(argv[i],"-gui") == 0)
     {
@@ -795,27 +799,11 @@ int main(int argc, char *argv[])
           {
             if (((i+6) < argc) && ((atof(argv[i+6]) != 0.0) || (strcmp(argv[i+6], "0") == 0) || (strcmp(argv[i+6], "0.0") == 0)))
             {
-              if (((i+7) < argc) && ((atof(argv[i+7]) != 0.0) || (strcmp(argv[i+7], "0") == 0) || (strcmp(argv[i+7], "0.0") == 0)))
-              {
-                if (((i+8) < argc) && ((atof(argv[i+8]) != 0.0) || (strcmp(argv[i+8], "0") == 0) || (strcmp(argv[i+8], "0.0") == 0)))
-                {
-                  lasreadopener.add_attribute(atoi(argv[i+1]), argv[i+2], argv[i+3], atof(argv[i+4]), atof(argv[i+5]), atof(argv[i+6]), atof(argv[i+7]), atof(argv[i+8]));
-                  i+=8;
-                }
-                else
-                {
-                  lasreadopener.add_attribute(atoi(argv[i+1]), argv[i+2], argv[i+3], atof(argv[i+4]), atof(argv[i+5]), atof(argv[i+6]), atof(argv[i+7]));
-                  i+=7;
-                }
-              }
-              else
-              { 
-                lasreadopener.add_attribute(atoi(argv[i+1]), argv[i+2], argv[i+3], atof(argv[i+4]), atof(argv[i+5]), atof(argv[i+6]));
-                i+=6;
-              }
+              lasreadopener.add_attribute(atoi(argv[i+1]), argv[i+2], argv[i+3], atof(argv[i+4]), atof(argv[i+5]), 1.0, 0.0, atof(argv[i+6]));
+              i+=6;
             }
             else
-            { 
+            {
               lasreadopener.add_attribute(atoi(argv[i+1]), argv[i+2], argv[i+3], atof(argv[i+4]), atof(argv[i+5]));
               i+=5;
             }
@@ -967,7 +955,7 @@ int main(int argc, char *argv[])
 
   if (extra_pass)
   {
-    if ((subsequence_start == 0) && (subsequence_stop == I64_MAX) && (clip_to_bounding_box == false) && (lasreadopener.get_filter() == 0) && ((lasreadopener.get_transform() == 0) || (lasreadopener.get_transform()->change_coordinates == FALSE)) && lasreadopener.get_filter() == 0)
+    if ((subsequence_start == 0) && (subsequence_stop == I64_MAX) && (clip_to_bounding_box == false) && (lasreadopener.get_filter() == 0) && ((lasreadopener.get_transform() == 0) || ((lasreadopener.get_transform()->transformed_fields & LASTRANSFORM_XYZ_COORDINATE) == 0)) && lasreadopener.get_filter() == 0)
     {
       extra_pass = FALSE;
     }
@@ -1318,42 +1306,85 @@ int main(int argc, char *argv[])
       {
         if (point == 0) point = new LASpoint;
       }
+      // were there extra bytes before
+      I32 num_extra_bytes = 0;
+      switch (lasreader->header.point_data_format)
+      {
+      case 0:
+        num_extra_bytes = lasreader->header.point_data_record_length - 20;
+        break;
+      case 1:
+        num_extra_bytes = lasreader->header.point_data_record_length - 28;
+        break;
+      case 2:
+        num_extra_bytes = lasreader->header.point_data_record_length - 26;
+        break;
+      case 3:
+        num_extra_bytes = lasreader->header.point_data_record_length - 34;
+        break;
+      case 4:
+        num_extra_bytes = lasreader->header.point_data_record_length - 57;
+        break;
+      case 5:
+        num_extra_bytes = lasreader->header.point_data_record_length - 63;
+        break;
+      case 6:
+        num_extra_bytes = lasreader->header.point_data_record_length - 30;
+        break;
+      case 7:
+        num_extra_bytes = lasreader->header.point_data_record_length - 36;
+        break;
+      case 8:
+        num_extra_bytes = lasreader->header.point_data_record_length - 38;
+        break;
+      case 9:
+        num_extra_bytes = lasreader->header.point_data_record_length - 59;
+        break;
+      case 10:
+        num_extra_bytes = lasreader->header.point_data_record_length - 67;
+        break;
+      }
+      if (num_extra_bytes < 0)
+      {
+        fprintf(stderr, "ERROR: point record length has %d fewer bytes than needed\n", -num_extra_bytes);
+        byebye(true);
+      }
       lasreader->header.point_data_format = (U8)set_point_data_format;
       lasreader->header.clean_laszip();
       switch (lasreader->header.point_data_format)
       {
       case 0:
-        lasreader->header.point_data_record_length = 20;
+        lasreader->header.point_data_record_length = 20 + num_extra_bytes;
         break;
       case 1:
-        lasreader->header.point_data_record_length = 28;
+        lasreader->header.point_data_record_length = 28 + num_extra_bytes;
         break;
       case 2:
-        lasreader->header.point_data_record_length = 26;
+        lasreader->header.point_data_record_length = 26 + num_extra_bytes;
         break;
       case 3:
-        lasreader->header.point_data_record_length = 34;
+        lasreader->header.point_data_record_length = 34 + num_extra_bytes;
         break;
       case 4:
-        lasreader->header.point_data_record_length = 57;
+        lasreader->header.point_data_record_length = 57 + num_extra_bytes;
         break;
       case 5:
-        lasreader->header.point_data_record_length = 63;
+        lasreader->header.point_data_record_length = 63 + num_extra_bytes;
         break;
       case 6:
-        lasreader->header.point_data_record_length = 30;
+        lasreader->header.point_data_record_length = 30 + num_extra_bytes;
         break;
       case 7:
-        lasreader->header.point_data_record_length = 36;
+        lasreader->header.point_data_record_length = 36 + num_extra_bytes;
         break;
       case 8:
-        lasreader->header.point_data_record_length = 38;
+        lasreader->header.point_data_record_length = 38 + num_extra_bytes;
         break;
       case 9:
-        lasreader->header.point_data_record_length = 59;
+        lasreader->header.point_data_record_length = 59 + num_extra_bytes;
         break;
       case 10:
-        lasreader->header.point_data_record_length = 67;
+        lasreader->header.point_data_record_length = 67 + num_extra_bytes;
         break;
       }
     }
@@ -1409,6 +1440,42 @@ int main(int argc, char *argv[])
         if (!point) point = new LASpoint;
       }
       lasreader->header.point_data_record_length = (U16)set_point_data_record_length;
+      lasreader->header.clean_laszip();
+    }
+
+    // are we supposed to add attributes
+
+    if (lasreadopener.get_number_attributes())
+    {
+      I32 attibutes_before_size = lasreader->header.get_attributes_size();
+      for (i = 0; i < lasreadopener.get_number_attributes(); i++)
+      {
+        I32 type = (lasreadopener.get_attribute_data_type(i)-1)%10;
+        try {
+          LASattribute attribute(type, lasreadopener.get_attribute_name(i), lasreadopener.get_attribute_description(i));
+          if (lasreadopener.get_attribute_scale(i) != 1.0 || lasreadopener.get_attribute_offset(i) != 0.0)
+          {
+            attribute.set_scale(lasreadopener.get_attribute_scale(i));
+          }
+          if (lasreadopener.get_attribute_offset(i) != 0.0)
+          {
+            attribute.set_offset(lasreadopener.get_attribute_offset(i));
+          }
+          if (lasreadopener.get_attribute_no_data(i) != F64_MAX)
+          {
+            attribute.set_no_data(lasreadopener.get_attribute_no_data(i));
+          }
+          lasreader->header.add_attribute(attribute);
+        }
+        catch(...) {
+          fprintf(stderr, "ERROR: initializing attribute %s\n", lasreadopener.get_attribute_name(i));
+          byebye(true);
+        }
+      }
+      I32 attibutes_after_size = lasreader->header.get_attributes_size();
+      if (!point) point = new LASpoint;
+      lasreader->header.update_extra_bytes_vlr();
+      lasreader->header.point_data_record_length += (attibutes_after_size-attibutes_before_size);
       lasreader->header.clean_laszip();
     }
 
@@ -1493,6 +1560,8 @@ int main(int argc, char *argv[])
       }
       else
       {
+        geoprojectionconverter.check_horizontal_datum_before_reprojection();
+
         reproject_quantizer = new LASquantizer();
         double point[3];
         point[0] = (lasreader->header.min_x+lasreader->header.max_x)/2;
@@ -1538,7 +1607,7 @@ int main(int argc, char *argv[])
         lasreader->header.del_geo_ogc_wkt();
       }
 
-      if (set_ogc_wkt) // maybe also set the OCG WKT 
+      if (set_ogc_wkt || (lasreader->header.point_data_format >= 6)) // maybe also set the OCG WKT
       {
         CHAR* ogc_wkt = set_ogc_wkt_string;
         I32 len = (ogc_wkt ? (I32)strlen(ogc_wkt) : 0);
@@ -1686,6 +1755,21 @@ int main(int argc, char *argv[])
       lasreader->header.clean_lasoriginal();
     }
 
+    if (lasreader->header.vlr_lastiling || lasreader->header.vlr_lasoriginal)
+    {
+      if (lasreader->get_transform()) 
+      {
+        if (lasreader->get_transform()->transformed_fields & (LASTRANSFORM_X_COORDINATE | LASTRANSFORM_Y_COORDINATE))
+        {
+          fprintf(stderr, "WARNING: transforming x or y coordinates of file with %s VLR invalidates this VLR\n", (lasreader->header.vlr_lastiling ? "lastiling" : "lasoriginal"));
+        }
+      }
+      if (reproject_quantizer) 
+      {
+        fprintf(stderr, "WARNING: reprojecting file with %s VLR invalidates this VLR\n", (lasreader->header.vlr_lastiling ? "lastiling" : "lasoriginal"));
+      }
+    }
+
     if (save_vlrs)
     {
       save_vlrs_to_file(&lasreader->header);
@@ -1705,7 +1789,7 @@ int main(int argc, char *argv[])
 
     if (extra_pass)
     {
-      if ((subsequence_start == 0) && (subsequence_stop == I64_MAX) && (clip_to_bounding_box == false) && (reproject_quantizer == 0) && (lasreadopener.get_filter() == 0) && ((lasreadopener.get_transform() == 0) || (lasreadopener.get_transform()->change_coordinates == FALSE)) && lasreadopener.get_filter() == 0)
+      if ((subsequence_start == 0) && (subsequence_stop == I64_MAX) && (clip_to_bounding_box == false) && (reproject_quantizer == 0) && (lasreadopener.get_filter() == 0) && ((lasreadopener.get_transform() == 0) || ((lasreadopener.get_transform()->transformed_fields & LASTRANSFORM_XYZ_COORDINATE) == 0)) && lasreadopener.get_filter() == 0)
       {
         extra_pass = FALSE;
       }
@@ -1802,7 +1886,12 @@ int main(int argc, char *argv[])
     strncpy(lasreader->header.system_identifier, "LAStools (c) by rapidlasso GmbH", 32);
     lasreader->header.system_identifier[31] = '\0';
     char temp[64];
+#ifdef _WIN64
+    sprintf(temp, "las2las64 (version %d)", LAS_TOOLS_VERSION);
+#else // _WIN64
     sprintf(temp, "las2las (version %d)", LAS_TOOLS_VERSION);
+#endif // _WIN64
+    memset(lasreader->header.generating_software, 0, 32);
     strncpy(lasreader->header.generating_software, temp, 32);
     lasreader->header.generating_software[31] = '\0';
 

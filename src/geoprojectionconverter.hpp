@@ -108,7 +108,9 @@ struct GeoProjectionGeoKeys
 #define GEO_GCS_SWEREF99           4619
 #define GEO_GCS_NAD83_NSRS2007     4759
 #define GEO_GCS_NAD83_2011         6318
+#define GEO_GCS_NAD83_PA11         6322
 #define GEO_GCS_NAD83_CORS96       6783
+#define GEO_GCS_GDA2020            7844
 
 #define GEO_SPHEROID_AIRY          7001
 #define GEO_SPHEROID_BESSEL1841    7004
@@ -122,14 +124,15 @@ struct GeoProjectionGeoKeys
 #define GEO_VERTICAL_WGS84         5030
 #define GEO_VERTICAL_NGVD29        5102
 #define GEO_VERTICAL_NAVD88        5103
-#define GEO_VERTICAL_CGVD2013      1127
-#define GEO_VERTICAL_EVRF2007      5215
 #define GEO_VERTICAL_CGVD28        5114
 #define GEO_VERTICAL_DVR90         5206
+#define GEO_VERTICAL_EVRF2007      5215
 #define GEO_VERTICAL_NN54          5776
 #define GEO_VERTICAL_DHHN92        5783
 #define GEO_VERTICAL_NN2000        5941
+#define GEO_VERTICAL_CGVD2013      6647 
 #define GEO_VERTICAL_DHHN2016      7837
+#define GEO_VERTICAL_NZVD2016      7839 
 
 #define GEO_VERTICAL_NAVD88_GEOID96   965103
 #define GEO_VERTICAL_NAVD88_GEOID99   995103
@@ -144,7 +147,7 @@ class GeoProjectionEllipsoid
 {
 public:
   int id;
-  char* name;
+  char const* name;
   double equatorial_radius;
   double polar_radius;
   double eccentricity_squared;
@@ -158,9 +161,10 @@ class GeoProjectionParameters
 {
 public:
   int type;
-  char name[256];
   short geokey;
-  GeoProjectionParameters() { type = -1; geokey = 0; };
+  short datum;
+  char name[256];
+  GeoProjectionParameters() { type = -1; geokey = 0; datum = 0; name[0] = '\0'; };
 };
 
 class GeoProjectionParametersUTM : public GeoProjectionParameters
@@ -281,14 +285,13 @@ public:
 
   // set & get current projection
 
-  bool set_projection_from_geo_keys(int num_geo_keys, GeoProjectionGeoKeys* geo_keys, char* geo_ascii_params, double* geo_double_params, char* description=0);
+  bool set_projection_from_geo_keys(int num_geo_keys, const GeoProjectionGeoKeys* geo_keys, char* geo_ascii_params, double* geo_double_params, char* description=0);
   bool get_geo_keys_from_projection(int& num_geo_keys, GeoProjectionGeoKeys** geo_keys, int& num_geo_double_params, double** geo_double_params, bool source=true);
   bool set_projection_from_ogc_wkt(const char* ogc_wkt, char* description=0);
   bool get_ogc_wkt_from_projection(int& len, char** ogc_wkt, bool source=true);
   bool get_prj_from_projection(int& len, char** prj, bool source=true);
   bool get_proj4_string_from_projection(int& len, char** proj4, bool source=true);
 
-  short get_GTModelTypeGeoKey() const;
   short get_GTRasterTypeGeoKey() const;
   short get_GeographicTypeGeoKey() const;
   short get_GeogGeodeticDatumGeoKey() const;
@@ -303,6 +306,9 @@ public:
   short get_GeogAzimuthUnitsGeoKey() const;
   double get_GeogPrimeMeridianLongGeoKey() const;
 
+  bool set_GTModelTypeGeoKey(short value, char* description=0);
+  short get_GTModelTypeGeoKey() const;
+
   bool set_ProjectedCSTypeGeoKey(short value, char* description=0);
   short get_ProjectedCSTypeGeoKey(bool source=true) const;
 
@@ -315,7 +321,7 @@ public:
   bool set_VerticalUnitsGeoKey(short value);
   short get_VerticalUnitsGeoKey(bool source=true) const;
 
-  bool set_VerticalCSTypeGeoKey(short value);
+  bool set_VerticalCSTypeGeoKey(short value, char* description=0);
   short get_VerticalCSTypeGeoKey();
 
   bool set_reference_ellipsoid(int id, char* description=0);
@@ -404,6 +410,10 @@ public:
 
   GeoProjectionConverter();
   ~GeoProjectionConverter();
+
+  // check before any reprojection
+
+  bool check_horizontal_datum_before_reprojection();
 
   // from current projection to longitude/latitude/elevation_in_meter
 

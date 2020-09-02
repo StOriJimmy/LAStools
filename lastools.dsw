@@ -39,6 +39,30 @@ Package=<4>
 
 ###############################################################################
 
+Project: "demdiff"=.\src_full\demdiff.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "demzip"=.\src_full\demzip.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "las2dem"=.\src_full\las2dem.dsp - Package Owner=<4>
 
 Package=<5>
@@ -195,6 +219,18 @@ Package=<4>
 
 ###############################################################################
 
+Project: "lasdatum"=.\src_full\lasdatum.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "lasdiff"=.\src\lasdiff.dsp - Package Owner=<4>
 
 Package=<5>
@@ -327,6 +363,18 @@ Package=<4>
 
 ###############################################################################
 
+Project: "lasmulticlip"=.\src_full\lasmulticlip.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
 Project: "lasnoise"=.\src_full\lasnoise.dsp - Package Owner=<4>
 
 Package=<5>
@@ -436,6 +484,18 @@ Package=<4>
 ###############################################################################
 
 Project: "lasreturn"=.\src_full\lasreturn.dsp - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+}}}
+
+###############################################################################
+
+Project: "lassection"=.\src_full\lassection.dsp - Package Owner=<4>
 
 Package=<5>
 {{{

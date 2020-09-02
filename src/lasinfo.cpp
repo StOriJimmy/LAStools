@@ -56,6 +56,9 @@
 #include "laszip_decompress_selective_v3.hpp"
 #include "lasutility.hpp"
 #include "laswriter.hpp"
+#include "lasquadtree.hpp"
+#include "lasvlrpayload.hpp"
+#include "lasindex.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -175,6 +178,12 @@ static I32 lidardouble2string(char* string, double value, double precision)
     sprintf(string, "%.7f", value);
   else if (precision == 0.00000001)
     sprintf(string, "%.8f", value);
+  else if (precision == 0.5)
+    sprintf(string, "%.1f", value);
+  else if (precision == 0.25)
+    sprintf(string, "%.2f", value);
+  else if (precision == 0.125)
+    sprintf(string, "%.3f", value);
   else
     return lidardouble2string(string, value);
   return (I32)strlen(string)-1;
@@ -327,6 +336,9 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[i],"-wait") == 0)
     {
       wait = true;
+    }
+    else if (strcmp(argv[i],"-fail") == 0)
+    {
     }
     else if (strcmp(argv[i],"-gui") == 0)
     {
@@ -1690,6 +1702,15 @@ int main(int argc, char *argv[])
                     break;
                   case 4619: // GCS_SWEREF99
                     fprintf(file_out, "GeographicTypeGeoKey: GCS_SWEREF99\012");
+                    break;
+                  case 6318: // GCS_NAD83_2011
+                    fprintf(file_out, "GeographicTypeGeoKey: GCS_NAD83_2011\012");
+                    break;
+                  case 6322: // GCS_NAD83_PA11
+                    fprintf(file_out, "GeographicTypeGeoKey: GCS_NAD83_PA11\012");
+                    break;
+                  case 7844: // GCS_GDA2020
+                    fprintf(file_out, "GeographicTypeGeoKey: GCS_GDA2020\012");
                     break;
                   default:
                     fprintf(file_out, "GeographicTypeGeoKey: look-up for %d not implemented\012", lasreader->header.vlr_geo_key_entries[j].value_offset);
@@ -3457,11 +3478,21 @@ int main(int argc, char *argv[])
                   case 5941: // Norway Normal Null 2000
                     fprintf(file_out, "VerticalCSTypeGeoKey: Norway Normal Null 2000\012");
                     break;
-                  case 6647: // Norway Normal Null 2000
+                  case 6647: // Canadian Geodetic Vertical Datum of 2013
                     fprintf(file_out, "VerticalCSTypeGeoKey: Canadian Geodetic Vertical Datum of 2013\012");
                     break;
+                  case 7837: // Deutches Haupthohennetz 2016
+                    fprintf(file_out, "VerticalCSTypeGeoKey: Deutsches Haupthoehennetz 2016\012");
+                    break;
                   default:
-                    fprintf(file_out, "VerticalCSTypeGeoKey: look-up for %d not implemented\012", lasreader->header.vlr_geo_key_entries[j].value_offset);
+                    if (geoprojectionconverter.set_VerticalCSTypeGeoKey(lasreader->header.vlr_geo_key_entries[j].value_offset, printstring))
+                    {
+                      fprintf(file_out, "VerticalCSTypeGeoKey: %s\012", printstring);
+                    }
+                    else
+                    {
+                      fprintf(file_out, "VerticalCSTypeGeoKey: look-up for %d not implemented\012", lasreader->header.vlr_geo_key_entries[j].value_offset);
+                    }
                   }
                   break;
                 case 4097: // VerticalCitationGeoKey
@@ -3693,6 +3724,31 @@ int main(int argc, char *argv[])
             fprintf(file_out, "  index %d bits/sample %d compression %d samples %u temporal %u gain %lg, offset %lg\012", lasheader->vlrs[i].record_id-99, vlr_wave_packet_descr->getBitsPerSample(), vlr_wave_packet_descr->getCompressionType(), vlr_wave_packet_descr->getNumberOfSamples(), vlr_wave_packet_descr->getTemporalSpacing(), vlr_wave_packet_descr->getDigitizerGain(), vlr_wave_packet_descr->getDigitizerOffset());
           }
         }
+        else if ((strcmp(lasheader->vlrs[i].user_id, "Raster LAZ") == 0) && (lasheader->vlrs[i].record_id == 7113))
+        {
+          LASvlrRasterLAZ vlrRasterLAZ;
+          if (vlrRasterLAZ.set_payload(lasheader->vlrs[i].data, lasheader->vlrs[i].record_length_after_header))
+          {
+            fprintf(file_out, "    ncols %6d\012", vlrRasterLAZ.ncols);
+            fprintf(file_out, "    nrows %6d\012", vlrRasterLAZ.nrows);
+            fprintf(file_out, "    llx   %.10g\012", vlrRasterLAZ.llx);
+            fprintf(file_out, "    lly   %.10g\012", vlrRasterLAZ.lly);
+            fprintf(file_out, "    stepx    %g\012", vlrRasterLAZ.stepx);
+            fprintf(file_out, "    stepy    %g\012", vlrRasterLAZ.stepy);
+            if (vlrRasterLAZ.sigmaxy)
+            {
+              fprintf(file_out, "    sigmaxy %g\012", vlrRasterLAZ.sigmaxy);
+            }
+            else
+            {
+              fprintf(file_out, "    sigmaxy <not set>\012");
+            }
+          }
+          else
+          {
+            fprintf(file_out,"WARNING: corrupt RasterLAZ VLR\n");
+          }
+        }
       }
     }
 
@@ -3726,6 +3782,15 @@ int main(int argc, char *argv[])
       }
     }
 
+    if (file_out && !no_variable_header)
+    {
+      const LASindex* index = lasreader->get_index();
+      if (index)
+      {
+        fprintf(file_out, "has spatial indexing LAX file\012"); // index->start, index->end, index->full, index->total, index->cells);
+      }
+    }
+
     if (file_out && !no_header)
     {
       if (lasheader->user_data_after_header_size) fprintf(file_out, "the header is followed by %u user-defined bytes\012", lasheader->user_data_after_header_size);
@@ -3740,7 +3805,19 @@ int main(int argc, char *argv[])
       }
       if (lasheader->vlr_lastiling)
       {
-        fprintf(file_out, "LAStiling (idx %d, lvl %d, sub %d, bbox %g %g %g %g%s%s)\n", 
+        LASquadtree lasquadtree;
+        lasquadtree.subtiling_setup(lasheader->vlr_lastiling->min_x, lasheader->vlr_lastiling->max_x, lasheader->vlr_lastiling->min_y, lasheader->vlr_lastiling->max_y, lasheader->vlr_lastiling->level, lasheader->vlr_lastiling->level_index, 0);
+        F32 min[2], max[2];
+        lasquadtree.get_cell_bounding_box(lasheader->vlr_lastiling->level_index, min, max);
+        F32 buffer = 0.0f;
+        if (lasheader->vlr_lastiling->buffer)
+        {
+          buffer = (F32)(min[0] - lasheader->min_x);
+          if ((F32)(min[1] - lasheader->min_y) > buffer) buffer = (F32)(min[1] - lasheader->min_y);
+          if ((F32)(lasheader->max_x - max[0]) > buffer) buffer = (F32)(lasheader->max_x - max[0]);
+          if ((F32)(lasheader->max_y - max[1]) > buffer) buffer = (F32)(lasheader->max_y - max[1]);
+        }
+        fprintf(file_out, "LAStiling (idx %d, lvl %d, sub %d, bbox %.10g %.10g %.10g %.10g%s%s) (size %g x %g, buffer %g)\n", 
           lasheader->vlr_lastiling->level_index, 
           lasheader->vlr_lastiling->level,
           lasheader->vlr_lastiling->implicit_levels,
@@ -3749,11 +3826,14 @@ int main(int argc, char *argv[])
           lasheader->vlr_lastiling->max_x,
           lasheader->vlr_lastiling->max_y,
           (lasheader->vlr_lastiling->buffer ? ", buffer" : ""),
-          (lasheader->vlr_lastiling->reversible ? ", reversible" : ""));
+          (lasheader->vlr_lastiling->reversible ? ", reversible" : ""),
+          max[0]-min[0],
+          max[1]-min[1],
+          buffer);
       }
       if (lasheader->vlr_lasoriginal)
       {
-        fprintf(file_out, "LASoriginal (npoints %u, bbox %g %g %g %g %g %g)\n", 
+        fprintf(file_out, "LASoriginal (npoints %u, bbox %.10g %.10g %.10g %.10g %.10g %.10g)\n", 
           (U32)lasheader->vlr_lasoriginal->number_of_point_records, 
           lasheader->vlr_lasoriginal->min_x,
           lasheader->vlr_lasoriginal->min_y,
@@ -4378,30 +4458,70 @@ int main(int argc, char *argv[])
       {
         wrong_entry = false;
         for (i = 0; i < 32; i++) if (lassummary.classification[i]) wrong_entry = true;
-        if (lassummary.classification_synthetic || lassummary.classification_keypoint ||  lassummary.classification_withheld) wrong_entry = true;
+        if (lassummary.flagged_synthetic || lassummary.flagged_keypoint || lassummary.flagged_withheld) wrong_entry = true;
 
         if (wrong_entry)
         {
           fprintf(file_out, "histogram of classification of points:\n"); 
 #ifdef _WIN32
           for (i = 0; i < 32; i++) if (lassummary.classification[i]) fprintf(file_out, " %15I64d  %s (%u)\n", lassummary.classification[i], LASpointClassification[i], i);
-          if (lassummary.classification_synthetic) fprintf(file_out, " +-> flagged as synthetic: %I64d\n", lassummary.classification_synthetic);
-          if (lassummary.classification_keypoint) fprintf(file_out,  " +-> flagged as keypoints: %I64d\n", lassummary.classification_keypoint);
-          if (lassummary.classification_withheld) fprintf(file_out,  " +-> flagged as withheld:  %I64d\n", lassummary.classification_withheld);
+          if (lassummary.flagged_synthetic)
+          {
+            fprintf(file_out, " +-> flagged as synthetic: %I64d\n", lassummary.flagged_synthetic);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_synthetic_classification[i]) fprintf(file_out, "  +---> %15I64d of those are %s (%u)\n", lassummary.flagged_synthetic_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_synthetic_classification[i]) fprintf(file_out, "  +---> %15I64d  of those are classification (%u)\n", lassummary.flagged_synthetic_classification[i], i);
+          }
+          if (lassummary.flagged_keypoint)
+          {
+            fprintf(file_out,  " +-> flagged as keypoints: %I64d\n", lassummary.flagged_keypoint);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_keypoint_classification[i]) fprintf(file_out, "  +---> %15I64d of those are %s (%u)\n", lassummary.flagged_keypoint_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_keypoint_classification[i]) fprintf(file_out, "  +---> %15I64d  of those are classification (%u)\n", lassummary.flagged_keypoint_classification[i], i);
+          }
+          if (lassummary.flagged_withheld)
+          {
+            fprintf(file_out,  " +-> flagged as withheld:  %I64d\n", lassummary.flagged_withheld);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_withheld_classification[i]) fprintf(file_out, "  +---> %15I64d of those are %s (%u)\n", lassummary.flagged_withheld_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_withheld_classification[i]) fprintf(file_out, "  +---> %15I64d  of those are classification (%u)\n", lassummary.flagged_withheld_classification[i], i);
+          }
 #else
           for (i = 0; i < 32; i++) if (lassummary.classification[i]) fprintf(file_out, " %15lld  %s (%u)\n", lassummary.classification[i], LASpointClassification[i], i);
-          if (lassummary.classification_synthetic) fprintf(file_out, " +-> flagged as synthetic: %lld\n", lassummary.classification_synthetic);
-          if (lassummary.classification_keypoint) fprintf(file_out,  " +-> flagged as keypoints: %lld\n", lassummary.classification_keypoint);
-          if (lassummary.classification_withheld) fprintf(file_out,  " +-> flagged as withheld:  %lld\n", lassummary.classification_withheld);
+          if (lassummary.flagged_synthetic)
+          {
+            fprintf(file_out, " +-> flagged as synthetic: %lld\n", lassummary.flagged_synthetic);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_synthetic_classification[i]) fprintf(file_out, "  +---> %15lld of those are %s (%u)\n", lassummary.flagged_synthetic_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_synthetic_classification[i]) fprintf(file_out, "  +---> %15lld  of those are classification (%u)\n", lassummary.flagged_synthetic_classification[i], i);
+          }
+          if (lassummary.flagged_keypoint)
+          {
+            fprintf(file_out,  " +-> flagged as keypoints: %lld\n", lassummary.flagged_keypoint);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_keypoint_classification[i]) fprintf(file_out, "  +---> %15lld of those are %s (%u)\n", lassummary.flagged_keypoint_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_keypoint_classification[i]) fprintf(file_out, "  +---> %15lld  of those are classification (%u)\n", lassummary.flagged_keypoint_classification[i], i);
+          }
+          if (lassummary.flagged_withheld)
+          {
+            fprintf(file_out,  " +-> flagged as withheld:  %lld\n", lassummary.flagged_withheld);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_withheld_classification[i]) fprintf(file_out, "  +---> %15lld of those are %s (%u)\n", lassummary.flagged_withheld_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_withheld_classification[i]) fprintf(file_out, "  +---> %15lld  of those are classification (%u)\n", lassummary.flagged_withheld_classification[i], i);
+          }
 #endif
         }
 
         if (lasreader->point.extended_point_type)
         {
 #ifdef _WIN32
-          if (lassummary.classification_extended_overlap) fprintf(file_out, " +-> flagged as extended overlap: %I64d\n", lassummary.classification_extended_overlap);
+          if (lassummary.flagged_extended_overlap)
+          {
+            fprintf(file_out, " +-> flagged as extended overlap: %I64d\n", lassummary.flagged_extended_overlap);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_extended_overlap_classification[i]) fprintf(file_out, "  +---> %15I64d of those are %s (%u)\n", lassummary.flagged_extended_overlap_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_extended_overlap_classification[i]) fprintf(file_out, "  +---> %15I64d  of those are classification (%u)\n", lassummary.flagged_extended_overlap_classification[i], i);
+          }
 #else
-          if (lassummary.classification_extended_overlap) fprintf(file_out, " +-> flagged as extended overlap: %lld\n", lassummary.classification_extended_overlap);
+          if (lassummary.flagged_extended_overlap)
+          {
+            fprintf(file_out, " +-> flagged as extended overlap: %lld\n", lassummary.flagged_extended_overlap);
+            for (i = 0; i < 32; i++) if (lassummary.flagged_extended_overlap_classification[i]) fprintf(file_out, "  +---> %15lld of those are %s (%u)\n", lassummary.flagged_extended_overlap_classification[i], LASpointClassification[i], i);
+            for (i = 32; i < 256; i++) if (lassummary.flagged_extended_overlap_classification[i]) fprintf(file_out, "  +---> %15lld  of those are classification (%u)\n", lassummary.flagged_extended_overlap_classification[i], i);
+          }
 #endif
 
           wrong_entry = false;

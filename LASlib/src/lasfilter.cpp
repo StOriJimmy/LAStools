@@ -642,6 +642,18 @@ private:
   I32 below_RGB, above_RGB, channel;
 };
 
+class LAScriterionKeepRGBgreenness : public LAScriterion
+{
+public:
+  inline const CHAR* name() const { return "keep_RGB_greenness"; };
+  inline I32 get_command(CHAR* string) const { return sprintf(string, "-%s %d %d ", name(),  below_RGB, above_RGB); };
+  inline U32 get_decompress_selective() const { return LASZIP_DECOMPRESS_SELECTIVE_RGB; };
+  inline BOOL filter(const LASpoint* point) { I32 greenness = 2 * point->get_G() - point->get_R() - point->get_B(); return ((greenness < below_RGB) || (above_RGB < greenness)); };
+  LAScriterionKeepRGBgreenness(I32 below_RGB, I32 above_RGB) { if (above_RGB < below_RGB) { this->below_RGB = above_RGB; this->above_RGB = below_RGB; } else { this->below_RGB = below_RGB; this->above_RGB = above_RGB; }; };
+private:
+  I32 below_RGB, above_RGB;
+};
+
 class LAScriterionDropRGB : public LAScriterion
 {
 public:
@@ -1695,6 +1707,7 @@ void LASfilter::usage() const
   fprintf(stderr,"  -drop_RGB_green 2000 10000\n");
   fprintf(stderr,"  -keep_RGB_blue 0 0\n");
   fprintf(stderr,"  -keep_RGB_nir 64 127\n");
+  fprintf(stderr,"  -keep_RGB_greenness 200 65535\n");
   fprintf(stderr,"  -keep_NDVI 0.2 0.7 -keep_NDVI_from_CIR -0.1 0.5\n");
   fprintf(stderr,"  -keep_NDVI_intensity_is_NIR 0.4 0.8 -keep_NDVI_green_is_NIR -0.2 0.2\n");
   fprintf(stderr,"Filter points based on their wavepacket.\n");
@@ -1779,6 +1792,7 @@ BOOL LASfilter::parse(int argc, char* argv[])
             fprintf(stderr,"ERROR: '%s' needs at least 1 argument: classification\n", argv[i]);
             return FALSE;
           }
+          int i_in = i;
           *argv[i]='\0';
           i+=1;
           U32 classification;
@@ -1787,12 +1801,12 @@ BOOL LASfilter::parse(int argc, char* argv[])
           {
             if (sscanf(argv[i], "%u", &classification) != 1)
             {
-              fprintf(stderr,"ERROR: '-keep_classification' needs at least 1 argument: classification but '%s' is no valid classification\n", argv[i]);
+              fprintf(stderr,"ERROR: '%s' needs at least 1 argument: classification but '%s' is no valid classification\n", argv[i_in], argv[i]);
               return FALSE;
             }
             if (classification > 31)
             {
-              fprintf(stderr,"ERROR: cannot keep classification %u because it is larger than 31\n", classification);
+              fprintf(stderr,"ERROR: '%s' needs arguments between 0 and 31 but '%u' is out of range\n", argv[i_in], classification);
               return FALSE;
             }
             keep_classification_mask |= (1u << classification);
@@ -2453,6 +2467,11 @@ BOOL LASfilter::parse(int argc, char* argv[])
         else if (strcmp(argv[i]+10,"nir") == 0)
         {
           add_criterion(new LAScriterionKeepRGB(min, max, 3));
+          *argv[i]='\0'; *argv[i+1]='\0'; *argv[i+2]='\0'; i+=2;
+        }
+        else if (strcmp(argv[i]+10,"greenness") == 0)
+        {
+          add_criterion(new LAScriterionKeepRGBgreenness(min, max));
           *argv[i]='\0'; *argv[i+1]='\0'; *argv[i+2]='\0'; i+=2;
         }
       }

@@ -157,8 +157,8 @@ int main(int argc, char *argv[])
 #endif
   bool verbose = false;
   bool very_verbose = false;
-  bool projection_was_set = false;
   bool quiet = false;
+  bool projection_was_set = false;
   int file_creation_day = -1;
   int file_creation_year = -1;
   int set_version_major = -1;
@@ -263,10 +263,19 @@ int main(int argc, char *argv[])
       verbose = true;
       very_verbose = true;
     }
+    else if (strcmp(argv[i],"-quiet") == 0)
+    {
+      quiet = true;
+      verbose = false;
+      very_verbose = false;
+    }
     else if (strcmp(argv[i],"-version") == 0)
     {
       fprintf(stderr, "LAStools (by martin@rapidlasso.com) version %d\n", LAS_TOOLS_VERSION);
       byebye();
+    }
+    else if (strcmp(argv[i],"-fail") == 0)
+    {
     }
     else if (strcmp(argv[i],"-gui") == 0)
     {
@@ -301,10 +310,6 @@ int main(int argc, char *argv[])
       fprintf(stderr, "WARNING: not compiled with 64 bit support. ignoring '-cpu64' ...\n");
 #endif
       argv[i][0] = '\0';
-    }
-    else if (strcmp(argv[i],"-quiet") == 0)
-    {
-      quiet = true;
     }
     else if (strcmp(argv[i],"-parse") == 0)
     {
@@ -356,11 +361,23 @@ int main(int argc, char *argv[])
       }
       F64 scale_factor[3];
       i++;
-      sscanf(argv[i], "%lf", &(scale_factor[0]));
+      if (sscanf(argv[i], "%lf", &(scale_factor[0])) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i-1]);
+        usage(true);
+      }
       i++;
-      sscanf(argv[i], "%lf", &(scale_factor[1]));
+      if (sscanf(argv[i], "%lf", &(scale_factor[1])) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i-2]);
+        usage(true);
+      }
       i++;
-      sscanf(argv[i], "%lf", &(scale_factor[2]));
+      if (sscanf(argv[i], "%lf", &(scale_factor[2])) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i-3]);
+        usage(true);
+      }
       lasreadopener.set_scale_factor(scale_factor);
     }
     else if (strcmp(argv[i],"-set_offset") == 0)
@@ -372,11 +389,23 @@ int main(int argc, char *argv[])
       }
       F64 offset[3];
       i++;
-      sscanf(argv[i], "%lf", &(offset[0]));
+      if (sscanf(argv[i], "%lf", &(offset[0])) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i-1]);
+        usage(true);
+      }
       i++;
-      sscanf(argv[i], "%lf", &(offset[1]));
+      if (sscanf(argv[i], "%lf", &(offset[1])) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i-2]);
+        usage(true);
+      }
       i++;
-      sscanf(argv[i], "%lf", &(offset[2]));
+      if (sscanf(argv[i], "%lf", &(offset[2])) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 3 arguments: x y z\n", argv[i-3]);
+        usage(true);
+      }
       lasreadopener.set_offset(offset);
     }
     else if (strcmp(argv[i],"-add_extra") == 0 || strcmp(argv[i],"-add_attribute") == 0)
@@ -437,9 +466,17 @@ int main(int argc, char *argv[])
         usage(true);
       }
       i++;
-      sscanf(argv[i], "%d", &file_creation_day);
+      if (sscanf(argv[i], "%d", &file_creation_day) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: day year\n", argv[i-1]);
+        usage(true);
+      }
       i++;
-      sscanf(argv[i], "%d", &file_creation_year);
+      if (sscanf(argv[i], "%d", &file_creation_year) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 2 arguments: day year\n", argv[i-2]);
+        usage(true);
+      }
     }
     else if (strcmp(argv[i],"-set_global_encoding") == 0)
     {
@@ -449,7 +486,11 @@ int main(int argc, char *argv[])
         usage(true);
       }
       i++;
-      set_global_encoding = atoi(argv[i]);
+      if (sscanf(argv[i], "%d", &set_global_encoding) != 1)
+      {
+        fprintf(stderr,"ERROR: '%s' needs 1 argument: value\n", argv[i-1]);
+        usage(true);
+      }
     }
     else if (strcmp(argv[i],"-set_system_identifier") == 0)
     {
@@ -602,6 +643,11 @@ int main(int argc, char *argv[])
     projection_was_set = geoprojectionconverter.get_geo_keys_from_projection(number_of_keys, &geo_keys, num_geo_double_params, &geo_double_params);
   }
 
+  if (!quiet)
+  {
+    full_start_time = taketime();
+  }
+
   // loop over multiple input files
 
   while (lasreadopener.active())
@@ -630,10 +676,13 @@ int main(int argc, char *argv[])
       laswriteopener.make_file_name(lasreadopener.get_file_name(), -2);
     }
 
-    if (verbose)
+    if (!quiet)
     {
-      full_start_time = start_time = taketime();
-      fprintf(stderr, "reading from '%s' and writing to '%s'\n", (lasreadopener.is_piped() ? "stdin" : lasreadopener.get_file_name()), (laswriteopener.is_piped() ? "stdout" : laswriteopener.get_file_name()));
+      start_time = taketime();
+      if (verbose)
+      {
+        fprintf(stderr, "reading from '%s' and writing to '%s'\n", (lasreadopener.is_piped() ? "stdin" : lasreadopener.get_file_name()), (laswriteopener.is_piped() ? "stdout" : laswriteopener.get_file_name()));
+      }
     }
 
     // populate header
@@ -655,18 +704,22 @@ int main(int argc, char *argv[])
       lasreader->header.system_identifier[31] = '\0';
     }
 
+    memset(lasreader->header.generating_software, 0, 32);
     if (set_generating_software)
     {
       strncpy(lasreader->header.generating_software, set_generating_software, 32);
-      lasreader->header.generating_software[31] = '\0';
     }
     else
     {
       char temp[64];
+#ifdef _WIN64
+      sprintf(temp, "txt2las64 (version %d)", LAS_TOOLS_VERSION);
+#else // _WIN64
       sprintf(temp, "txt2las (version %d)", LAS_TOOLS_VERSION);
+#endif // _WIN64
       strncpy(lasreader->header.generating_software, temp, 32);
-      lasreader->header.generating_software[31] = '\0';
     }
+    lasreader->header.generating_software[31] = '\0';
 
     // maybe set global encoding
 
@@ -848,9 +901,11 @@ int main(int argc, char *argv[])
     delete laswriter;
     delete lasreader;
 
-    if (!quiet) fprintf(stderr, "done with '%s'. total time %g sec.\n", (laswriteopener.is_piped() ? lasreadopener.get_file_name() : laswriteopener.get_file_name()), taketime()-full_start_time);
+    if (!quiet) { fprintf(stderr, "done with '%s'. total time %g sec.\n", (laswriteopener.is_piped() ? lasreadopener.get_file_name() : laswriteopener.get_file_name()), taketime()-start_time); start_time = taketime(); }
     laswriteopener.set_file_name(0);
   }
+
+  if (!quiet && (lasreadopener.get_file_name_number() > 1)) fprintf(stderr, "done with %u files. total time %g sec.\n", lasreadopener.get_file_name_number(), taketime()-full_start_time);
 
   byebye(false, argc==1);
 

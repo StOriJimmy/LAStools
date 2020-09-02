@@ -24,6 +24,7 @@
 
   CHANGE HISTORY:
 
+    15 October 2019 -- support reading from and writing to unicode file names under Windows
     20 March 2019 -- check consistent legacy and extended classification in laszip_write_point()
      7 November 2018 -- assure identical legacy and extended flags in laszip_write_point()
     20 October 2018 -- changed (U8*) to (const U8*) for all out->put___() calls
@@ -1200,7 +1201,7 @@ laszip_set_geokeys(
 
     // add the VLR
 
-    if (laszip_add_vlr(laszip_dll, "LASF_Projection", 34735, 8 + number*8, 0, (laszip_U8*)key_entries_plus_one))
+    if (laszip_add_vlr(laszip_dll, "LASF_Projection", 34735, (laszip_U16)(8 + number*8), 0, (laszip_U8*)key_entries_plus_one))
     {
       sprintf(laszip_dll->error, "setting %u geodouble_params", number);
       return 1;
@@ -1255,7 +1256,7 @@ laszip_set_geodouble_params(
 
     // add the VLR
 
-    if (laszip_add_vlr(laszip_dll, "LASF_Projection", 34736, number*8, 0, (laszip_U8*)geodouble_params))
+    if (laszip_add_vlr(laszip_dll, "LASF_Projection", 34736, (laszip_U16)(number*8), 0, (laszip_U8*)geodouble_params))
     {
       sprintf(laszip_dll->error, "setting %u geodouble_params", number);
       return 1;
@@ -1310,7 +1311,7 @@ laszip_set_geoascii_params(
 
     // add the VLR
 
-    if (laszip_add_vlr(laszip_dll, "LASF_Projection", 34737, number, 0, (laszip_U8*)geoascii_params))
+    if (laszip_add_vlr(laszip_dll, "LASF_Projection", 34737, (laszip_U16)(number), 0, (laszip_U8*)geoascii_params))
     {
       sprintf(laszip_dll->error, "setting %u geoascii_params", number);
       return 1;
@@ -1386,7 +1387,7 @@ laszip_add_attribute(
       return 1;
     }
 
-    if (laszip_add_vlr(laszip_dll, "LASF_Spec\0\0\0\0\0\0", 4, laszip_dll->attributer->number_attributes*sizeof(LASattribute), 0, (laszip_U8*)laszip_dll->attributer->attributes))
+    if (laszip_add_vlr(laszip_dll, "LASF_Spec\0\0\0\0\0\0", 4, (laszip_U16)(laszip_dll->attributer->number_attributes*sizeof(LASattribute)), 0, (laszip_U8*)laszip_dll->attributer->attributes))
     {
       sprintf(laszip_dll->error, "adding the new extra bytes VLR with the additional attribute '%s'", name);
       return 1;
@@ -2045,7 +2046,7 @@ laszip_prepare_point_for_write(
 
       // add the compatibility VLR
 
-      if (laszip_add_vlr(laszip_dll, "lascompatible\0\0", 22204, 2+2+4+148, 0, (laszip_U8*)out->takeData()))
+      if (laszip_add_vlr(laszip_dll, "lascompatible\0\0", 22204, (laszip_U16)(2+2+4+148), 0, (laszip_U8*)out->takeData()))
       {
         sprintf(laszip_dll->error, "adding the compatibility VLR");
         return 1;
@@ -2139,7 +2140,7 @@ laszip_prepare_point_for_write(
 
       // add the extra bytes VLR with the additional attributes
 
-      if (laszip_add_vlr(laszip_dll, "LASF_Spec\0\0\0\0\0\0", 4, laszip_dll->attributer->number_attributes*sizeof(LASattribute), 0, (laszip_U8*)laszip_dll->attributer->attributes))
+      if (laszip_add_vlr(laszip_dll, "LASF_Spec\0\0\0\0\0\0", 4, (laszip_U16)(laszip_dll->attributer->number_attributes*sizeof(LASattribute)), 0, (laszip_U8*)laszip_dll->attributer->attributes))
       {
         sprintf(laszip_dll->error, "adding the extra bytes VLR with the additional attributes");
         return 1;
@@ -2775,7 +2776,7 @@ setup_laszip_items(
   laszip_U8 point_type = laszip_dll->header.point_data_format;
   laszip_U16 point_size = laszip_dll->header.point_data_record_length;
 
-  if (compress && (point_type > 5) && laszip_dll->request_compatibility_mode)
+  if ((point_type > 5) && laszip_dll->request_compatibility_mode)
   {
     if (!laszip->request_compatibility_mode(1))
     {
@@ -2914,7 +2915,13 @@ laszip_open_writer(
 
     // open the file
 
-    laszip_dll->file = fopen(file_name, "wb");
+#ifdef _MSC_VER
+    wchar_t* utf16_file_name = UTF8toUTF16(file_name);
+    laszip_dll->file = _wfopen(utf16_file_name, L"wb");
+    delete [] utf16_file_name;
+#else
+	laszip_dll->file = fopen(file_name, "wb");
+#endif
 
     if (laszip_dll->file == 0)
     {
@@ -4164,7 +4171,7 @@ laszip_read_header(
 
           if (attributer.number_attributes)
           {
-            if (laszip_add_vlr(laszip_dll, "LASF_Spec\0\0\0\0\0\0", 4, attributer.number_attributes*sizeof(LASattribute), 0, (laszip_U8*)attributer.attributes))
+            if (laszip_add_vlr(laszip_dll, "LASF_Spec\0\0\0\0\0\0", 4, (laszip_U16)(attributer.number_attributes*sizeof(LASattribute)), 0, (laszip_U8*)attributer.attributes))
             {
               sprintf(laszip_dll->error, "rewriting the extra bytes VLR without 'LAS 1.4 compatibility mode' attributes");
               return 1;
@@ -4323,7 +4330,13 @@ laszip_open_reader(
 
     // open the file
 
-    laszip_dll->file = fopen(file_name, "rb");
+#ifdef _MSC_VER
+    wchar_t* utf16_file_name = UTF8toUTF16(file_name);
+    laszip_dll->file = _wfopen(utf16_file_name, L"rb");
+    delete [] utf16_file_name;
+#else
+	laszip_dll->file = fopen(file_name, "rb");
+#endif
 
     if (laszip_dll->file == 0)
     {

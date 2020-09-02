@@ -30,6 +30,8 @@
 */
 #include "lasreader_asc.hpp"
 
+#include "lasvlrpayload.hpp"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -234,7 +236,7 @@ BOOL LASreaderASC::open(const CHAR* file_name, BOOL comma_not_point)
 
   // init the bounding box z and count the rasters
 
-  F32 elevation = 0;
+  F64 elevation = 0;
   npoints = 0;
   header.min_z = F64_MAX;
   header.max_z = F64_MIN;
@@ -274,7 +276,7 @@ BOOL LASreaderASC::open(const CHAR* file_name, BOOL comma_not_point)
         while ((line[line_curr] != '\0') && (line[line_curr] <= ' ')) line_curr++;
       }
       // get elevation value
-      sscanf(&(line[line_curr]), "%f", &elevation);
+      sscanf(&(line[line_curr]), "%lf", &elevation);
       // skip parsed number
       while ((line[line_curr] != '\0') && (line[line_curr] > ' ')) line_curr++;
       // skip following spaces
@@ -313,6 +315,25 @@ BOOL LASreaderASC::open(const CHAR* file_name, BOOL comma_not_point)
     header.min_z = 0;
     header.max_z = 0;
   }
+
+  // add the VLR for Raster LAZ 
+
+  LASvlrRasterLAZ vlrRasterLAZ;
+  vlrRasterLAZ.nbands = 1;
+  vlrRasterLAZ.nbits = 32;
+  vlrRasterLAZ.ncols = ncols;
+  vlrRasterLAZ.nrows = nrows;
+  vlrRasterLAZ.reserved1 = 0;
+  vlrRasterLAZ.reserved2 = 0;
+  vlrRasterLAZ.stepx = cellsize;
+  vlrRasterLAZ.stepx_y = 0.0;
+  vlrRasterLAZ.stepy = cellsize;
+  vlrRasterLAZ.stepy_x = 0.0;
+  vlrRasterLAZ.llx = xllcenter - 0.5*cellsize;
+  vlrRasterLAZ.lly = yllcenter - 0.5*cellsize;
+  vlrRasterLAZ.sigmaxy = 0.0;
+
+  header.add_vlr("Raster LAZ", 7113, (U16)vlrRasterLAZ.get_payload_size(), vlrRasterLAZ.get_payload(), FALSE, "by LAStools of rapidlasso GmbH", FALSE);
 
   // reopen
 
@@ -358,7 +379,7 @@ BOOL LASreaderASC::seek(const I64 p_index)
 
 BOOL LASreaderASC::read_point_default()
 {
-  F32 elevation;
+  F64 elevation;
   while (p_count < npoints)
   {
     if (line[line_curr] == '\0')
@@ -394,7 +415,7 @@ BOOL LASreaderASC::read_point_default()
       row++;
     }
     // get elevation value
-    sscanf(&(line[line_curr]), "%f", &elevation);
+    sscanf(&(line[line_curr]), "%lf", &elevation);
     // skip parsed number
     while ((line[line_curr] != '\0') && (line[line_curr] > ' ')) line_curr++;
     // skip following spaces
